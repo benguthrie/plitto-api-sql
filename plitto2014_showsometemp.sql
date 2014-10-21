@@ -39,7 +39,7 @@ CREATE TABLE `showsometemp` (
   `lastshowncount` int(11) DEFAULT NULL,
   `lastshown` datetime DEFAULT NULL,
   PRIMARY KEY (`sstid`)
-) ENGINE=InnoDB AUTO_INCREMENT=30 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=49 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -51,4 +51,4 @@ CREATE TABLE `showsometemp` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2014-10-17 15:38:34
+-- Dump completed on 2014-10-21  0:14:00
