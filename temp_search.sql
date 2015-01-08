@@ -1,8 +1,6 @@
-CREATE DATABASE  IF NOT EXISTS `plitto2014` /*!40100 DEFAULT CHARACTER SET latin1 */;
-USE `plitto2014`;
--- MySQL dump 10.13  Distrib 5.6.17, for Win32 (x86)
+-- MySQL dump 10.13  Distrib 5.6.16, for Win32 (x86)
 --
--- Host: 127.0.0.1    Database: plitto2014
+-- Host: localhost    Database: plitto2014
 -- ------------------------------------------------------
 -- Server version	5.6.16
 
@@ -12,35 +10,34 @@ USE `plitto2014`;
 /*!40101 SET NAMES utf8 */;
 /*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
 /*!40103 SET TIME_ZONE='+00:00' */;
-/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
-/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
-/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='' */;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Table structure for table `dblog`
+-- Table structure for table `temp_search`
 --
 
-DROP TABLE IF EXISTS `dblog`;
+DROP TABLE IF EXISTS `temp_search`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `dblog` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `userId` int(11) DEFAULT NULL,
-  `query` text,
-  `time` decimal(12,5) DEFAULT NULL,
-  `sp` varchar(45) DEFAULT NULL,
+CREATE TABLE `temp_search` (
+  `id` int(3) NOT NULL AUTO_INCREMENT,
+  `type` varchar(10) DEFAULT NULL,
+  `group` int(1) DEFAULT NULL,
+  `groupName` varchar(20) DEFAULT NULL,
+  `nameid` int(11) DEFAULT NULL,
+  `name` text,
+  `count` int(7) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=3498 DEFAULT CHARSET=latin1 COMMENT='Log of Database calls.';
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
-/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
-/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2014-10-21  0:14:00
+-- Dump completed on 2015-01-07 21:45:59
