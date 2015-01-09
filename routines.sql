@@ -1562,6 +1562,7 @@ BEGIN
 		All session handling moves into the token arena. All other stored procs should use the token as a way to handle this.
 */
 call `spSqlLog`(0, CONCAT('call `v2.0_fbLogin`("',fbuid,'","',fbname,'","',fbemail,'","',fbfriendsarray,'")'), 0, 'v2.0_fbLogin');
+
 SET @fbuid = fbuid;
 SET @fbname = fbname;
 SET @fbemail = fbemail;
@@ -1572,6 +1573,8 @@ SET @active = null;
 SET @username = null;
 SET @email = null;
 SET @fbToken = fbToken;
+SET @newAccount = false;
+SET @friendids = '';
 -- Step 1 -- see if this account already exists. If so create some variables to hold their information.
 -- SELECT @puid:=id , @active:=active, @thename:=name, @email:=email from tuser where fbuid = fbuid limit 1;
 
@@ -1592,7 +1595,8 @@ SET @result = CONCAT('fbuid: '
 -- This test is failing: Maybe?
 if @puid is null then
 	set @result = CONCAT(@result,' puid was null. Create account.');
-	-- Create the new user.
+	
+    -- Create the new user.
 	insert into tuser (`name`,`fbuid`,`active`,`email`,`added`) 
 	VALUES(@fbname, @fbuid, 1, @fbemail,CURRENT_TIMESTAMP);
 	
@@ -1603,11 +1607,15 @@ if @puid is null then
 	from tuser 
 	where id = last_insert_id()
 	limit 1;
+    
+    SET @newAccount = true;
+    
 -- Step 2 -- See if there are updates to make
 elseif @active != 1 or @username != fbname or @email != fbemail then
 	update tuser set `name` = @fbname, email = @fbemail, `active` = 1 where id = @puid limit 1;
 	SET @result = CONCAT(@result,' | Update account information');
 end if;
+
 
 -- STEP -- We should have a valid user at this point. Get the plitto IDs from their friends based on the facebook IDs passed in as fbfriendsarray.
 SET @friendquery = CONCAT('select GROUP_CONCAT(id) INTO @friendids from tuser where fbuid in (',@fbfriendsarray,')');
@@ -1615,6 +1623,18 @@ SET @friendquery = CONCAT('select GROUP_CONCAT(id) INTO @friendids from tuser wh
 	execute stmt;
 	deallocate prepare stmt;
     -- At this point, @friendids now holds the FBUIDS 
+
+
+-- Step Add this user as friends to their friends 1/9/2014
+if @newAccount = true then 
+	-- Get a list of friend IDS who are this user's friends, and add this user to their graph 
+	SET @appendToFriends = CONCAT(
+		'update token set friendsarray = CONCAT( CONVERT(friendsarray USING utf8) , ',', CONVERT(',@puid,' using utf8) ) 
+		where active = 1 and token.`id` > 0 and token.`uid` in (',@friendids,') ');
+        
+	-- Add and alert for each of these users to let them know that their friend joined. 
+    
+end if;
 	
 -- Get the old fbToken: 
 SELECT fbToken, id  into @oldFbToken, @oldTokenId from token where uid = @puid and active = 1 limit 1;
@@ -3660,4 +3680,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-07 21:45:59
+-- Dump completed on 2015-01-09 15:14:09
