@@ -97,6 +97,41 @@ DELIMITER ;
 /*!50003 SET character_set_results = utf8 */ ;
 /*!50003 SET collation_connection  = utf8_general_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `adminAddUuidToTlist`()
+BEGIN
+
+/*
+ALTER TABLE `plitto2014`.`tlist` 
+ADD COLUMN `uuid` VARCHAR(45) NULL AFTER `dittokey`;
+*/
+
+SET @changeCount = (select count(*) from tlist where uuid is null);
+
+SET @loopCount = 0;
+
+while @loopCount < @changeCount DO
+
+		UPDATE tlist set uuid = UUID() where uuid is null limit 1;
+        
+        SET @loopCount = @loopCount + 1;
+
+END WHILE;
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = '' */ ;
 DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `adminDeleteUser`()
@@ -345,779 +380,6 @@ DELIMITER ;
 /*!50003 SET character_set_results = utf8 */ ;
 /*!50003 SET collation_connection  = utf8_general_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spAddToList`(thingName TEXT, listnameid INT, userid INT )
-BEGIN
--- addToList("'.$_POST['thingName'].'","'.$_POST['listnameid'].'","'.$_POST['userid'].'","'.$_POST['userfb'].'");'accessible
-
-call `spSqlLog`(userid, CONCAT('call spAddToList("',thingName,'","',listnameid,'","',userid,'")'), 0, 'spAddToList');
-
-
--- Vars
-set @thingName = thingName;
-set @listnameid = listnameid;
-set @userid = userid;
-SET @userid_listnameid = CONCAT(@userid,'_',@listnameid);
--- Get the thing id
-set @thingId = fThingId(@thingName);
-
--- Find out if it already exists.
-set @thekey = (select id from tlist where lid = @listnameid and uid = @userid and tid = @thingId limit 1);
-
-if @thekey > 1 then
-	-- Nothing to do.
-	SET @a = 1;
-else
-	insert into tlist (`lid`,`tid`,`uid`,`added`,`modified`,`state`)
-	values (@listnameid, @thingId, @userid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1);
-
-	SET @thekey =  LAST_INSERT_ID();
-
-end if;
-
-SELECT @thekey as thekey, tlist.tid as thingid, 
-	@userid_listnameid as listkey, 
-	@thingName as thingname, 
-	tthing.name as listname,
-	@listnameid as lid
-from tlist
-inner join tthing on tthing.id = @listnameid 
-where tlist.tid = @thingId and tlist.uid = @userid
-limit 1
-
-;
-
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8 */ ;
-/*!50003 SET character_set_results = utf8 */ ;
-/*!50003 SET collation_connection  = utf8_general_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spDitto`(userid INT, sourceuserid INT, thingid INT, 
-	listid INT, theaction VARCHAR(20) , myFriends TEXT)
-BEGIN
-
--- Sample: call spDitto("1","2","7779","7772","ditto","2,14,13")
-call `spSqlLog`(userid, CONCAT('call spDitto("',userid,'","',sourceuserid,'","',thingid,'","',listid,'","',theaction,'","',myFriends,'")'), 0, 'spDitto');
-
--- Process the variables
-SET @userid = userid;
-SET @sourceuserid = sourceuserid;
-SET @thingid = thingid;
-SET @listid = listid;
-SET @theaction = theaction;
-SET @myFriends = myFriends; -- to get the count of friends who have that thing in that list.
-
-if @theaction LIKE 'ditto' then 
-	-- INSERT INTO TLIST
-	INSERT INTO tlist (tid, lid, uid, state, added, modified)
-		VALUES (@thingid, @listid, @userid, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-	on duplicate key update state = 1;
-	
-	SET @thekey = (select id from tlist where tid = @thingid and lid = @listid and uid = @userid limit 1);
-	
-
-
-	-- log the ditto - Working. 
-		-- TODO2 - Handle what happens if a ditto is just returning something to its origional state.
-	insert into tditto (userid, sourceuserid, thingid, listid, `added`, `read`)
-	values (@userid, @sourceuserid, @thingid, @listid, CURRENT_TIMESTAMP, 0);
-
-	-- Get the ditto key - FAILING
-	SET @dittokey = 15;
-
-	SET @dkq = CONCAT('
-	SET @dittokey = (
-		select id 
-		from tditto 
-		where 
-			userid = ',@userid,' and 
-			sourceuserid = ',@sourceuserid,' and 
-			thingid = ',@thingid,' and 
-			listid = ',@listid,' 
-		order by id desc
-		limit 1
-	);');
-
-	-- DEBUG call log('dittokey hunt',@dkq);
-
-	prepare stmt from @dkq;
-	execute stmt;
-	deallocate prepare stmt;
-
-	-- call log('dittokey result',@dittokey);
-
-	-- Add it to the list table. - This is working.
-	update tlist set dittokey = @dittokey where id = @thekey limit 1;
-
-	-- Return the thingid and thingname and listname for the benefit of the Javascript coder.`
-	-- SELECT @thekey as thekey;
-	
-	SET @theQ = CONCAT('
-	select 
-		l.id as thekey, l.tid, t.name as thingname, l.lid, 
-		ln.name as listname, count(*) as friendsWith
-	from tlist l
-	inner join tthing t on t.id = l.tid
-	inner join tthing ln on ln.id = l.lid
-	where l.tid = ',@thingid,' and l.lid = ',@listid,' and l.uid in (',@myFriends,',',@userid,')
-	group by l.tid, l.lid');
-
-	prepare stmt from @theQ;
-	execute stmt;
-	deallocate prepare stmt;
-
-elseif @theaction LIKE 'remove' then 
-	-- Set the state to 0.
-	UPDATE tlist SET state = 0 where tid = @thingid and lid = @listid and uid = @userid limit 1;
-
-
-	-- Remove the notification and hide the ditto log.
-	update tditto set hidden = 1, `read` = 1
-	where userid = @userid and sourceuserid = @sourceuserid and thingid = @thingid and listid = @listid
-	limit 1;
-
-	SELECT true as success;
-	
-end if;
-
-
-
-
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8 */ ;
-/*!50003 SET character_set_results = utf8 */ ;
-/*!50003 SET collation_connection  = utf8_general_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spDittosUser`(userId int, aboutUserIds TEXT)
-BEGIN
-
-call `spSqlLog`(userid, CONCAT('call spDittosUser("',userId,'","',aboutUserIds,'"'), 0, 'spDittosUser');
-
--- Dittos given
-SET @dittosGiven = CONCAT('
-select d.listid as lid, l.name as listname, d.thingid as tid, t.name as thingname, d.added 
-	, u.id as userid, u.name as username, u.fbuid 
-from tditto d
-inner join tthing t on t.id = d.thingid
-inner join tthing l on l.id = d.listid
-inner join tuser u on u.id = d.sourceuserid
-where userid = ', userId ,' and sourceuserid in (', aboutUserIds,')
-order by d.id desc
-limit 500');
-
--- Dittos received
-SET @dittosReceived = CONCAT('
-select d.listid as lid, l.name as listname, d.thingid as tid, t.name as thingname, d.added 
-, u.id as userid, u.name as username, u.fbuid 
-from tditto d
-inner join tthing t on t.id = d.thingid
-inner join tthing l on l.id = d.listid
-inner join tuser u on u.id = d.userid
-
-where userid in (', aboutUserIds,') and sourceuserid = ', userId ,'
-order by d.id desc
-limit 500');
-
--- Execute the queries
-prepare stmt from @dittosGiven;
-execute stmt;
-	deallocate prepare stmt;
-
-prepare stmt from @dittosReceived;
-execute stmt;
-	deallocate prepare stmt;
-
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8 */ ;
-/*!50003 SET character_set_results = utf8 */ ;
-/*!50003 SET collation_connection  = utf8_general_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spFriendsFB`(
-	userId INT, 
-	forUserIDs TEXT
-)
-BEGIN
-
-call `spSqlLog`(userId, CONCAT('call spFriendsFB("',userId,'","',forUserIDs,'")'), 0, 'spFriendsFB');
-
-
-SET @userId = userId;
-SET @forUserIDs = forUserIds;
-
--- Try to build all the results from a single query.
-SET @friendquery = CONCAT('
-
-select u.id, u.name, u.fbuid  
-	, count(DISTINCT tt.tid, tt.lid) as things
-
-	, count(DISTINCT ot.tid, ot.lid) as shared
-	, count(DISTINCT tt.tid, tt.lid) - count(DISTINCT ot.tid, ot.lid) as dittoable
-
-	, count(distinct tt.lid) as lists
-	, count(distinct ot.lid) as sharedlists
-/*
-	, count(distinct d.id) as dittosout
-	, count(distinct dd.id) as dittosin
-*/
-	
-	
-
-from tuser u 
-
--- In Common
-	-- Their things 0.016
-inner join tlist tt on tt.uid = u.id  and tt.state = 1
-
-
-
-	-- Things in common 0.0031
-left outer join tlist ot on ot.lid = tt.lid and ot.tid = tt.tid  and ot.state = 1 and ot.uid = ',@userId,'
-
--- left outer join tditto d on tt.uid = d.sourceuserid
--- left outer join tditto dd on tt.uid = dd.userid
-
-where 
-	u.fbuid in (',@forUserIds,')
-	
-group by u.id
-order by shared desc
-
-
-
-');
-
-prepare stmt from @friendquery;
-	execute stmt;
-	deallocate prepare stmt;
-
-/*
-
-union 
-
-select ',@userId,' as id, h.name, h.fbuid, count(g.id) as things
-	, count(g.id) as shared
-	, 0 as dittoable
-	, count( distinct g.lid) as lists
-	, count( distinct g.lid) as sharedlists
-	, 0 as dittosout
-	, 0 as dittosin
-from tlist g
-inner join tuser h on g.uid = h.id 
-where g.uid = ',@userId,'
-group by g.uid
-*/
-
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8 */ ;
-/*!50003 SET character_set_results = utf8 */ ;
-/*!50003 SET collation_connection  = utf8_general_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spGetActivity`(userid INT, users TEXT, lastDate DATETIME)
-BEGIN
--- call getActivity(for users ,last activity date)
--- call getActivity('2,13,14,1','')
-call `spSqlLog`(userid, CONCAT('call spGetActivity("',userid,'","',users,'","',lastDate,'")'), 0, 'spGetActivity');
-
-
-SET @users = users;
-set @lastDate = lastDate;
-SET @muid = userid;
-
-
-	set @num :=0, @uid := null;
-SET @q = CONCAT('
-
-select 
-	a.id, 
-	a.uid ,  u.name as username, u.fbuid as fbuid, 
-	a.lid, ln.name as listname,
-	a.tid, tn.name as thingname,
-	a.added, a.modified, a.state, a.mykey, 
-	a.dittokey, d.sourceuserid as dittouser,du.fbuid as dittofbuid, du.name as dittousername
-	
-from (
-	select * from (
-		select i.id, 
-				i.uid, 
-			i.lid, 
-			i.tid, 
-			i.added, 
-			i.modified,
-			i.state,
-			i.dittokey,
-				j.id as mykey, 
-			@num := if(@uid = i.uid, @num + 1,1) as row_number,
-			@uid := i.uid as dummy
-		from tlist i 
-			
-			left outer join tlist j 
-				on i.lid = j.lid and i.tid = j.tid and j.state = 1 and j.uid = ',@muid,'
-		
-		where 
-			i.uid in (',@users,') 
-			and i.state = 1
-			and i.added > DATE_SUB(NOW(), INTERVAL 2 MONTH)
-			and j.id is null
-		group by i.uid, i.lid, i.tid
-		having row_number <=20
-		order by i.uid desc
-			
-	) as dittoable
-
-	union
-
-	select * from (
-		select i.id, 
-				i.uid, 
-			i.lid, 
-			i.tid, 
-			i.added, 
-			i.modified,
-			i.state,
-			i.dittokey,
-				j.id as mykey, 
-			@num := if(@uid = i.uid, @num + 1,1) as row_number,
-			@uid := i.uid as dummy
-		from tlist i 
-			
-			left outer join tlist j 
-				on i.lid = j.lid and i.tid = j.tid and j.state = 1 and j.uid = ',@muid,'
-		
-		where 
-			i.uid in (',@users,') 
-			and i.state = 1
-			and i.added > DATE_SUB(NOW(), INTERVAL 2 MONTH)
-			and j.id is not null
-		group by i.uid, i.lid, i.tid
-		having row_number <=20
-		order by i.uid desc
-			
-	) as incommon
-)
-as a 
-inner join tuser u on u.id = a.uid
-inner join tthing ln on ln.id = a.lid
-inner join tthing tn on tn.id = a.tid
-
-left outer join tditto d on d.id = a.dittokey
-left outer join tuser du on d.sourceuserid = du.id 
-
-
-order by a.added desc
-
-
-');
-
-SET @dot = 1;
-
-if @dot = 1 then
-	prepare stmt from @q;
-	execute stmt;
-	deallocate prepare stmt;
-else
-	select @q;
-end if;
-
-
-
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8 */ ;
-/*!50003 SET character_set_results = utf8 */ ;
-/*!50003 SET collation_connection  = utf8_general_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spLists`(
-	userId INT, 
-	forUserIDs TEXT, 
-	forLists TEXT ,
-	filters VARCHAR(255) ,
-	firstDate INT(11), 
-	lastDate INT(11), 
-	direction VARCHAR(255)
-)
-BEGIN
-
-call `spSqlLog`(userId, CONCAT('call spLists("',userId,'","',forUserIDs,'","',forLists,'","',filters,'","',firstDate,'","',lastDate,'","',direction,'")'), 0, 'spLists');
-
-SET @userId = userId;			-- For this UserID.
-SET @forUserIDs = forUserIDs;	-- String of IDs to pull
-SET @forLists = forLists;		-- String of list name ids to pull
-SET @filters = filters;			-- incommon,shared,ditto
-SET @firstDate = firstDate;		-- The Oldest date in the current record set.
-SET @lastDate = lastDate;			-- The Newest Date in the current record set
-SET @direction = direction;		-- Older, Newer, or Both
-
---  Removed duid set @thefields = ' a.id, a.tid, a.lid, a.uid, a.added, a.modified, a.duid, a.state ';
-set @thefields = ' a.id, a.tid, a.lid, a.uid, a.added, a.modified, a.state ';
--- set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`uid`,`a`,`m`,`duid`,`state`,`myKey`)';
-set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`uid`,`a`,`m`,`state`,`myKey`)';
-
-SET @defaultlimit = 50;
-
-drop table if exists `temp_splists`;
-
-CREATE table temp_splists (
-	`id` INT(11),
-	`tid` int(11),
-	`lid` int(11),
-	`uid` int(11),
-	`a` datetime,
-	`m` datetime,
-	-- Removed. This will move to notifications and dittos. `duid` int(11),
-	`state` tinyint(1),
-	`myKey` int(11)
-);
-
--- This must have been some kind of debuggind. 
- -- and a.tid not in (8082,7089,7088,7087,7086,7085,7084,7608,7517,7516,7515,7514,7513,7512,7511,7510,7509,7508,7507,7506,7505,7504,7503,7502,7501,7527,7487)
-
--- My Stuff
-SET @myStuff = CONCAT(@insertTable, 
-	' select ', @thefields,' , a.id 
-	from tlist a 
-	
-	where a.uid = "',@userId,'" and a.state = 1 
-		
-	order by a.id desc
-	limit ',@defaultlimit);
-
--- Dittoable 
-SET @dittoable = CONCAT(@insertTable, 
-	' select ', @thefields,' , b.id
-	from tlist a 
-	left outer join tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@userId,' 
-	where a.uid in (',@forUserIDs,') and a.state = 1 and b.state is null 
-		
-	order by a.id desc
-	limit ',@defaultlimit);
-
-
--- Shared 
-SET @shared = CONCAT(@insertTable, 
-	' select ', @thefields,' , b.id
-	from tlist a 
-	inner join tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@userId,'
-	where a.uid in (',@forUserIDs,') and a.state = 1 and b.state = 1  
-		
-	order by a.id desc
-	limit ',@defaultlimit);
-
-
-prepare stmt from @myStuff;
-	execute stmt;
-	deallocate prepare stmt;
-
-prepare stmt from @dittoable;
-	execute stmt;
-	deallocate prepare stmt;
-
-prepare stmt from @shared;
-	execute stmt;
-	deallocate prepare stmt;
-
-
-/* Result Set 1: List Contents */
-SELECT * FROM temp_splists order by uid desc, lid asc, a desc;
-
-/* Result Set 2: Thing Names */
-
-select * from (
-	select l.tid as id, a.name
-	from temp_splists l
-	inner join tthing a on a.id = l.tid
-
-
-	union 
-
-
-	select  l.lid as id, a.name
-	from temp_splists l
-	inner join tthing a on a.id = l.lid
-) 
-as b
-order by id asc;
-
-/*
- // Result Set 2: User Names 
-select distinct a.uid , b.name, b.fbuid
-from temp_splists a 
-inner join tuser b on a.uid = b.id;
-*/
-
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8 */ ;
-/*!50003 SET character_set_results = utf8 */ ;
-/*!50003 SET collation_connection  = utf8_general_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spListsB`(
-	userId INT, 
-	forUserIDs TEXT, 
-	forLists TEXT ,
-	filters VARCHAR(255) ,
-	firstDate INT(11), 
-	lastDate INT(11), 
-	direction VARCHAR(255)
-)
-BEGIN
-
-call `spSqlLog`(userId, CONCAT('call spListsB("',userId,'","',forUserIDs,'","',forLists,'","',filters,'","',firstDate,'","',lastDate,'","',direction,'")'), 0, 'spListsB');
-
-SET @userId = userId;			-- For this UserID.
-SET @forUserIDs = forUserIDs;	-- String of IDs to pull
-SET @forLists = forLists;		-- String of list name ids to pull
-SET @filters = filters;			-- incommon,shared,ditto
-SET @firstDate = firstDate;		-- The Oldest date in the current record set.
-SET @lastDate = lastDate;			-- The Newest Date in the current record set
-SET @direction = direction;		-- Older, Newer, or Both
-
---  Removed duid set @thefields = ' a.id, a.tid, a.lid, a.uid, a.added, a.modified, a.duid, a.state ';
-set @thefields = ' a.id, a.tid, a.lid, a.uid, a.added, a.modified, a.state ';
--- set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`uid`,`a`,`m`,`duid`,`state`,`myKey`)';
-set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`uid`,`a`,`m`,`state`,`myKey`,`show`,`listid`,`grouporder`)';
-
-SET @defaultlimit = 200;
-
-drop table if exists `temp_splists`;
-
-CREATE table temp_splists (
-	`id` INT(11),
-	`tid` int(11),
-	`lid` int(11),
-	`uid` int(11),
-	`a` datetime,
-	`m` datetime,
-	-- Removed. This will move to notifications and dittos. `duid` int(11),
-	`state` tinyint(1),
-	`myKey` int(11),
-	`listid` VARCHAR(20),
-	`show` BINARY,
-	`grouporder` tinyint(1)
-);
-
--- This must have been some kind of debuggind. 
- -- and a.tid not in (8082,7089,7088,7087,7086,7085,7084,7608,7517,7516,7515,7514,7513,7512,7511,7510,7509,7508,7507,7506,7505,7504,7503,7502,7501,7527,7487)
-
--- My Stuff
-SET @myStuff = CONCAT(@insertTable, 
-	' select ', @thefields,' , a.id, false as `show` ,CONCAT(a.uid,"_",a.lid) as listid, 3 as grouporder
-	from tlist a 
-	
-	where a.uid = "',@userId,'" and a.state = 1 
-		
-	order by a.id desc
-	limit ',@defaultlimit);
-
--- Dittoable 
-SET @dittoable = CONCAT(@insertTable, 
-	' select ', @thefields,' , b.id, true as `show`, CONCAT(a.uid,"_",a.lid) as listid, 1 as grouporder
-	from tlist a 
-	left outer join tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@userId,' 
-	where a.uid in (',@forUserIDs,') and a.state = 1 and b.state is null 
-		
-	order by a.id desc
-	limit ',@defaultlimit);
-
-
--- Shared 
-SET @shared = CONCAT(@insertTable, 
-	' select ', @thefields,' , b.id, true as `show`,CONCAT(a.uid,"_",a.lid) as listid, 2 as grouporder
-	from tlist a 
-	inner join tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@userId,'
-	where a.uid in (',@forUserIDs,') and a.state = 1 and b.state = 1  
-		
-	order by a.id desc
-	limit ',@defaultlimit);
-
-prepare stmt from @dittoable;
-	execute stmt;
-	deallocate prepare stmt; 
-
-prepare stmt from @shared;
-	execute stmt;
-	deallocate prepare stmt;
-
-prepare stmt from @myStuff;
-	execute stmt;
-	deallocate prepare stmt;
-
-
-/* Result Set 1: List Contents */
--- SELECT * FROM temp_splists order by uid desc, lid asc, a desc;
-select *, CONCAT(uid,'_',lid) as listkey from (
-select t.id, t.tid, t.lid, t.uid, t.a, t.m, t.state, t.myKey 
-	, a.name as thingname, b.name as username, c.name as listname
-	, b.fbuid, `show`, listid , 1 as customOrder
-from temp_splists t
-inner join tthing a on t.tid = a.id
-inner join tthing c on t.lid = c.id
-inner join tuser b on b.id = t.uid
-where uid != @userId
-
-
-UNION
-select t.id, t.tid, t.lid, t.uid, t.a, t.m, t.state, t.myKey 
-	, a.name as thingname, b.name as username, c.name as listname
-	, b.fbuid, `show`, listid , 2 as customOrder
-from temp_splists t
-inner join tthing a on t.tid = a.id
-inner join tthing c on t.lid = c.id
-inner join tuser b on b.id = t.uid
-where uid = @userId)
-as x order by customOrder desc, listid desc
-;
-
-/* Result Set 2: Thing Names 
-
-select * from (
-	select l.tid as id, a.name
-	from temp_splists l
-	inner join tthing a on a.id = l.tid
-
-
-	union 
-
-DELIMITER $$
-CREATE FUNCTION `fThingId`(newthingName TEXT) RETURNS int(11)
-BEGIN
-
-SET @newthingName = newthingName;
-
-SET @thingId = (select id from tthing where `name` = @newthingName limit 1);
-
-
--- call log('new thing',CONCAT('thingID: ',@thingId, ' thingName: ',@newthingName));
-
-if(@thingId > 1) then 
-		-- call log('thing id was greater than 1. ',CONCAT('thingID: ',@thingId, ' thingName: ',@newthingName));
-
-	SET @thingId =  @thingId;
-else
-	-- call log('thing fail. ThingID was 0 or 1',@thingId);
-	insert into tthing (`name`) VALUES (@newthingName);
-
-	set @thingId =  LAST_INSERT_ID();
-end if;
-
-return @thingId;
-
-
-END$$
-DELIMITER ;
-
-	select  l.lid as id, a.name
-	from temp_splists l
-	inner join tthing a on a.id = l.lid
-) 
-as b
-order by id asc;
-*/
-/*
- // Result Set 2: User Names 
-select distinct a.uid , b.name, b.fbuid
-from temp_splists a 
-inner join tuser b on a.uid = b.id;
-*/
-
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8 */ ;
-/*!50003 SET character_set_results = utf8 */ ;
-/*!50003 SET collation_connection  = utf8_general_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spPlittoFriendsFromFb`(friendString TEXT)
-BEGIN
-
-call `spSqlLog`(0, CONCAT('call spPlittoFriendsFromFb("',friendString,'")'), 0, 'spPlittoFriendsFromFb');
-
-SET @q = CONCAT('
-select group_concat(id SEPARATOR ",") as puids from tuser where fbuid in (',friendString,')');
-
-prepare stmt from @q;
-execute stmt;
-deallocate prepare stmt;
-
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8 */ ;
-/*!50003 SET character_set_results = utf8 */ ;
-/*!50003 SET collation_connection  = utf8_general_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
 DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `spSqlLog`(userId INT, thequery TEXT, logtime DECIMAL(12,5), sp VARCHAR(45))
@@ -1125,33 +387,6 @@ BEGIN
 
 insert into dblog(`userId`,`query`,`time`,`sp`)
 VALUES (userId, thequery, logtime, sp);
-
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8 */ ;
-/*!50003 SET character_set_results = utf8 */ ;
-/*!50003 SET collation_connection  = utf8_general_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spThingId`(thingname TEXT)
-BEGIN
-
-
-call `spSqlLog`(0, CONCAT('call spThingId("',thingname,'")'), 0, 'spThingId');
-
-SET @thingname = thingname;
-
-SET @thingid = fThingId(@thingname);
-
-select @thingid as thingid;
 
 END ;;
 DELIMITER ;
@@ -1309,8 +544,8 @@ if @thekey > 1 then
 	-- Nothing to do.
 	SET @a = 1;
 else
-	insert into tlist (`lid`,`tid`,`uid`,`added`,`modified`,`state`)
-	values (@listnameid, @thingId, @uid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1);
+	insert into tlist (`lid`,`tid`,`uid`,`added`,`modified`,`state`,`uuid`)
+	values (@listnameid, @thingId, @uid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, UUID() );
 
 	SET @thekey =  LAST_INSERT_ID();
 
@@ -1320,7 +555,8 @@ SELECT @thekey as thekey, tlist.tid as thingid,
 	@userid_listnameid as listkey, 
 	@thingName as thingname, 
 	tthing.name as listname,
-	@listnameid as lid
+	@listnameid as lid,
+    `tlist`.`uuid`
 from tlist
 inner join tthing on tthing.id = @listnameid 
 where tlist.tid = @thingId and tlist.uid = @uid
@@ -1461,8 +697,8 @@ end if;
 
 if @theaction LIKE 'ditto' then 
 	-- INSERT INTO TLIST
-	INSERT INTO tlist (tid, lid, uid, state, added, modified)
-		VALUES (@thingid, @listid, @uid, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	INSERT INTO tlist (`tid`, `lid`, `uid`, `state`, `added`, `modified`,`uuid`)
+		VALUES (@thingid, @listid, @uid, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, UUID() )
 	on duplicate key update state = 1;
 	
 	SET @thekey = (select id from tlist where tid = @thingid and lid = @listid and uid = @uid limit 1);
@@ -1473,7 +709,7 @@ if @theaction LIKE 'ditto' then
 		-- TODO2 - Handle what happens if a ditto is just returning something to its origional state.
 	/* Insert into tditto only if it isn't the person dittoing themself. */
 	if @uid != @sourceuserid then 
-		insert into tditto (userid, sourceuserid, thingid, listid, `added`, `read`)
+		insert into tditto (`userid`, `sourceuserid`, `thingid`, `listid`, `added`, `read`)
 		values (@uid, @sourceuserid, @thingid, @listid, CURRENT_TIMESTAMP, 0);
 	end if;
 
@@ -1509,7 +745,7 @@ if @theaction LIKE 'ditto' then
 	SET @theQ = CONCAT('
 	select 
 		l.id as thekey, l.tid, t.name as thingname, l.lid, 
-		ln.name as listname, count(*) as friendsWith
+		ln.name as listname, count(*) as friendsWith, `l`.`uuid`
 	from tlist l
 	inner join tthing t on t.id = l.tid
 	inner join tthing ln on ln.id = l.lid
@@ -3673,6 +2909,806 @@ DELIMITER ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spAddToList`(thingName TEXT, listnameid INT, userid INT )
+BEGIN
+-- addToList("'.$_POST['thingName'].'","'.$_POST['listnameid'].'","'.$_POST['userid'].'","'.$_POST['userfb'].'");'accessible
+
+call `spSqlLog`(userid, CONCAT('call spAddToList("',thingName,'","',listnameid,'","',userid,'")'), 0, 'spAddToList');
+
+
+-- Vars
+set @thingName = thingName;
+set @listnameid = listnameid;
+set @userid = userid;
+SET @userid_listnameid = CONCAT(@userid,'_',@listnameid);
+-- Get the thing id
+set @thingId = fThingId(@thingName);
+
+-- Find out if it already exists.
+set @thekey = (select id from tlist where lid = @listnameid and uid = @userid and tid = @thingId limit 1);
+
+if @thekey > 1 then
+	-- Nothing to do.
+	SET @a = 1;
+else
+	insert into tlist (`lid`,`tid`,`uid`,`added`,`modified`,`state`,`uuid`)
+	values (@listnameid, @thingId, @userid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, UUID() );
+
+	SET @thekey =  LAST_INSERT_ID();
+
+end if;
+
+SELECT @thekey as thekey, tlist.tid as thingid, 
+	@userid_listnameid as listkey, 
+	@thingName as thingname, 
+	tthing.name as listname,
+	@listnameid as lid
+from tlist
+inner join tthing on tthing.id = @listnameid 
+where tlist.tid = @thingId and tlist.uid = @userid
+limit 1
+
+;
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spDitto`(userid INT, sourceuserid INT, thingid INT, 
+	listid INT, theaction VARCHAR(20) , myFriends TEXT)
+BEGIN
+
+-- Sample: call spDitto("1","2","7779","7772","ditto","2,14,13")
+call `spSqlLog`(userid, CONCAT('call spDitto("',userid,'","',sourceuserid,'","',thingid,'","',listid,'","',theaction,'","',myFriends,'")'), 0, 'spDitto');
+
+-- Process the variables
+SET @userid = userid;
+SET @sourceuserid = sourceuserid;
+SET @thingid = thingid;
+SET @listid = listid;
+SET @theaction = theaction;
+SET @myFriends = myFriends; -- to get the count of friends who have that thing in that list.
+
+if @theaction LIKE 'ditto' then 
+	-- INSERT INTO TLIST
+	INSERT INTO tlist (`tid`, `lid`, `uid`, `state`, `added`, `modified`,`uuid`)
+		VALUES (@thingid, @listid, @userid, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, UUID())
+	on duplicate key update state = 1;
+	
+	SET @thekey = (select id from tlist where tid = @thingid and lid = @listid and uid = @userid limit 1);
+	
+
+
+	-- log the ditto - Working. 
+		-- TODO2 - Handle what happens if a ditto is just returning something to its origional state.
+	insert into tditto (`userid`, `sourceuserid`, `thingid`, `listid`, `added`, `read`)
+	values (@userid, @sourceuserid, @thingid, @listid, CURRENT_TIMESTAMP, 0);
+
+	-- Get the ditto key - FAILING
+	SET @dittokey = 15;
+
+	SET @dkq = CONCAT('
+	SET @dittokey = (
+		select id 
+		from tditto 
+		where 
+			userid = ',@userid,' and 
+			sourceuserid = ',@sourceuserid,' and 
+			thingid = ',@thingid,' and 
+			listid = ',@listid,' 
+		order by id desc
+		limit 1
+	);');
+
+	-- DEBUG call log('dittokey hunt',@dkq);
+
+	prepare stmt from @dkq;
+	execute stmt;
+	deallocate prepare stmt;
+
+	-- call log('dittokey result',@dittokey);
+
+	-- Add it to the list table. - This is working.
+	update tlist set dittokey = @dittokey where id = @thekey limit 1;
+
+	-- Return the thingid and thingname and listname for the benefit of the Javascript coder.`
+	-- SELECT @thekey as thekey;
+	
+	SET @theQ = CONCAT('
+	select 
+		l.id as thekey, l.tid, t.name as thingname, l.lid, 
+		ln.name as listname, count(*) as friendsWith
+	from tlist l
+	inner join tthing t on t.id = l.tid
+	inner join tthing ln on ln.id = l.lid
+	where l.tid = ',@thingid,' and l.lid = ',@listid,' and l.uid in (',@myFriends,',',@userid,')
+	group by l.tid, l.lid');
+
+	prepare stmt from @theQ;
+	execute stmt;
+	deallocate prepare stmt;
+
+elseif @theaction LIKE 'remove' then 
+	-- Set the state to 0.
+	UPDATE tlist SET state = 0 where tid = @thingid and lid = @listid and uid = @userid limit 1;
+
+
+	-- Remove the notification and hide the ditto log.
+	update tditto set hidden = 1, `read` = 1
+	where userid = @userid and sourceuserid = @sourceuserid and thingid = @thingid and listid = @listid
+	limit 1;
+
+	SELECT true as success;
+	
+end if;
+
+
+
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spDittosUser`(userId int, aboutUserIds TEXT)
+BEGIN
+
+call `spSqlLog`(userid, CONCAT('call spDittosUser("',userId,'","',aboutUserIds,'"'), 0, 'spDittosUser');
+
+-- Dittos given
+SET @dittosGiven = CONCAT('
+select d.listid as lid, l.name as listname, d.thingid as tid, t.name as thingname, d.added 
+	, u.id as userid, u.name as username, u.fbuid 
+from tditto d
+inner join tthing t on t.id = d.thingid
+inner join tthing l on l.id = d.listid
+inner join tuser u on u.id = d.sourceuserid
+where userid = ', userId ,' and sourceuserid in (', aboutUserIds,')
+order by d.id desc
+limit 500');
+
+-- Dittos received
+SET @dittosReceived = CONCAT('
+select d.listid as lid, l.name as listname, d.thingid as tid, t.name as thingname, d.added 
+, u.id as userid, u.name as username, u.fbuid 
+from tditto d
+inner join tthing t on t.id = d.thingid
+inner join tthing l on l.id = d.listid
+inner join tuser u on u.id = d.userid
+
+where userid in (', aboutUserIds,') and sourceuserid = ', userId ,'
+order by d.id desc
+limit 500');
+
+-- Execute the queries
+prepare stmt from @dittosGiven;
+execute stmt;
+	deallocate prepare stmt;
+
+prepare stmt from @dittosReceived;
+execute stmt;
+	deallocate prepare stmt;
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spFriendsFB`(
+	userId INT, 
+	forUserIDs TEXT
+)
+BEGIN
+
+call `spSqlLog`(userId, CONCAT('call spFriendsFB("',userId,'","',forUserIDs,'")'), 0, 'spFriendsFB');
+
+
+SET @userId = userId;
+SET @forUserIDs = forUserIds;
+
+-- Try to build all the results from a single query.
+SET @friendquery = CONCAT('
+
+select u.id, u.name, u.fbuid  
+	, count(DISTINCT tt.tid, tt.lid) as things
+
+	, count(DISTINCT ot.tid, ot.lid) as shared
+	, count(DISTINCT tt.tid, tt.lid) - count(DISTINCT ot.tid, ot.lid) as dittoable
+
+	, count(distinct tt.lid) as lists
+	, count(distinct ot.lid) as sharedlists
+/*
+	, count(distinct d.id) as dittosout
+	, count(distinct dd.id) as dittosin
+*/
+	
+	
+
+from tuser u 
+
+-- In Common
+	-- Their things 0.016
+inner join tlist tt on tt.uid = u.id  and tt.state = 1
+
+
+
+	-- Things in common 0.0031
+left outer join tlist ot on ot.lid = tt.lid and ot.tid = tt.tid  and ot.state = 1 and ot.uid = ',@userId,'
+
+-- left outer join tditto d on tt.uid = d.sourceuserid
+-- left outer join tditto dd on tt.uid = dd.userid
+
+where 
+	u.fbuid in (',@forUserIds,')
+	
+group by u.id
+order by shared desc
+
+
+
+');
+
+prepare stmt from @friendquery;
+	execute stmt;
+	deallocate prepare stmt;
+
+/*
+
+union 
+
+select ',@userId,' as id, h.name, h.fbuid, count(g.id) as things
+	, count(g.id) as shared
+	, 0 as dittoable
+	, count( distinct g.lid) as lists
+	, count( distinct g.lid) as sharedlists
+	, 0 as dittosout
+	, 0 as dittosin
+from tlist g
+inner join tuser h on g.uid = h.id 
+where g.uid = ',@userId,'
+group by g.uid
+*/
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spGetActivity`(userid INT, users TEXT, lastDate DATETIME)
+BEGIN
+-- call getActivity(for users ,last activity date)
+-- call getActivity('2,13,14,1','')
+call `spSqlLog`(userid, CONCAT('call spGetActivity("',userid,'","',users,'","',lastDate,'")'), 0, 'spGetActivity');
+
+
+SET @users = users;
+set @lastDate = lastDate;
+SET @muid = userid;
+
+
+	set @num :=0, @uid := null;
+SET @q = CONCAT('
+
+select 
+	a.id, 
+	a.uid ,  u.name as username, u.fbuid as fbuid, 
+	a.lid, ln.name as listname,
+	a.tid, tn.name as thingname,
+	a.added, a.modified, a.state, a.mykey, 
+	a.dittokey, d.sourceuserid as dittouser,du.fbuid as dittofbuid, du.name as dittousername
+	
+from (
+	select * from (
+		select i.id, 
+				i.uid, 
+			i.lid, 
+			i.tid, 
+			i.added, 
+			i.modified,
+			i.state,
+			i.dittokey,
+				j.id as mykey, 
+			@num := if(@uid = i.uid, @num + 1,1) as row_number,
+			@uid := i.uid as dummy
+		from tlist i 
+			
+			left outer join tlist j 
+				on i.lid = j.lid and i.tid = j.tid and j.state = 1 and j.uid = ',@muid,'
+		
+		where 
+			i.uid in (',@users,') 
+			and i.state = 1
+			and i.added > DATE_SUB(NOW(), INTERVAL 2 MONTH)
+			and j.id is null
+		group by i.uid, i.lid, i.tid
+		having row_number <=20
+		order by i.uid desc
+			
+	) as dittoable
+
+	union
+
+	select * from (
+		select i.id, 
+				i.uid, 
+			i.lid, 
+			i.tid, 
+			i.added, 
+			i.modified,
+			i.state,
+			i.dittokey,
+				j.id as mykey, 
+			@num := if(@uid = i.uid, @num + 1,1) as row_number,
+			@uid := i.uid as dummy
+		from tlist i 
+			
+			left outer join tlist j 
+				on i.lid = j.lid and i.tid = j.tid and j.state = 1 and j.uid = ',@muid,'
+		
+		where 
+			i.uid in (',@users,') 
+			and i.state = 1
+			and i.added > DATE_SUB(NOW(), INTERVAL 2 MONTH)
+			and j.id is not null
+		group by i.uid, i.lid, i.tid
+		having row_number <=20
+		order by i.uid desc
+			
+	) as incommon
+)
+as a 
+inner join tuser u on u.id = a.uid
+inner join tthing ln on ln.id = a.lid
+inner join tthing tn on tn.id = a.tid
+
+left outer join tditto d on d.id = a.dittokey
+left outer join tuser du on d.sourceuserid = du.id 
+
+
+order by a.added desc
+
+
+');
+
+SET @dot = 1;
+
+if @dot = 1 then
+	prepare stmt from @q;
+	execute stmt;
+	deallocate prepare stmt;
+else
+	select @q;
+end if;
+
+
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spLists`(
+	userId INT, 
+	forUserIDs TEXT, 
+	forLists TEXT ,
+	filters VARCHAR(255) ,
+	firstDate INT(11), 
+	lastDate INT(11), 
+	direction VARCHAR(255)
+)
+BEGIN
+
+call `spSqlLog`(userId, CONCAT('call spLists("',userId,'","',forUserIDs,'","',forLists,'","',filters,'","',firstDate,'","',lastDate,'","',direction,'")'), 0, 'spLists');
+
+SET @userId = userId;			-- For this UserID.
+SET @forUserIDs = forUserIDs;	-- String of IDs to pull
+SET @forLists = forLists;		-- String of list name ids to pull
+SET @filters = filters;			-- incommon,shared,ditto
+SET @firstDate = firstDate;		-- The Oldest date in the current record set.
+SET @lastDate = lastDate;			-- The Newest Date in the current record set
+SET @direction = direction;		-- Older, Newer, or Both
+
+--  Removed duid set @thefields = ' a.id, a.tid, a.lid, a.uid, a.added, a.modified, a.duid, a.state ';
+set @thefields = ' a.id, a.tid, a.lid, a.uid, a.added, a.modified, a.state ';
+-- set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`uid`,`a`,`m`,`duid`,`state`,`myKey`)';
+set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`uid`,`a`,`m`,`state`,`myKey`)';
+
+SET @defaultlimit = 50;
+
+drop table if exists `temp_splists`;
+
+CREATE table temp_splists (
+	`id` INT(11),
+	`tid` int(11),
+	`lid` int(11),
+	`uid` int(11),
+	`a` datetime,
+	`m` datetime,
+	-- Removed. This will move to notifications and dittos. `duid` int(11),
+	`state` tinyint(1),
+	`myKey` int(11)
+);
+
+-- This must have been some kind of debuggind. 
+ -- and a.tid not in (8082,7089,7088,7087,7086,7085,7084,7608,7517,7516,7515,7514,7513,7512,7511,7510,7509,7508,7507,7506,7505,7504,7503,7502,7501,7527,7487)
+
+-- My Stuff
+SET @myStuff = CONCAT(@insertTable, 
+	' select ', @thefields,' , a.id 
+	from tlist a 
+	
+	where a.uid = "',@userId,'" and a.state = 1 
+		
+	order by a.id desc
+	limit ',@defaultlimit);
+
+-- Dittoable 
+SET @dittoable = CONCAT(@insertTable, 
+	' select ', @thefields,' , b.id
+	from tlist a 
+	left outer join tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@userId,' 
+	where a.uid in (',@forUserIDs,') and a.state = 1 and b.state is null 
+		
+	order by a.id desc
+	limit ',@defaultlimit);
+
+
+-- Shared 
+SET @shared = CONCAT(@insertTable, 
+	' select ', @thefields,' , b.id
+	from tlist a 
+	inner join tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@userId,'
+	where a.uid in (',@forUserIDs,') and a.state = 1 and b.state = 1  
+		
+	order by a.id desc
+	limit ',@defaultlimit);
+
+
+prepare stmt from @myStuff;
+	execute stmt;
+	deallocate prepare stmt;
+
+prepare stmt from @dittoable;
+	execute stmt;
+	deallocate prepare stmt;
+
+prepare stmt from @shared;
+	execute stmt;
+	deallocate prepare stmt;
+
+
+/* Result Set 1: List Contents */
+SELECT * FROM temp_splists order by uid desc, lid asc, a desc;
+
+/* Result Set 2: Thing Names */
+
+select * from (
+	select l.tid as id, a.name
+	from temp_splists l
+	inner join tthing a on a.id = l.tid
+
+
+	union 
+
+
+	select  l.lid as id, a.name
+	from temp_splists l
+	inner join tthing a on a.id = l.lid
+) 
+as b
+order by id asc;
+
+/*
+ // Result Set 2: User Names 
+select distinct a.uid , b.name, b.fbuid
+from temp_splists a 
+inner join tuser b on a.uid = b.id;
+*/
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spListsB`(
+	userId INT, 
+	forUserIDs TEXT, 
+	forLists TEXT ,
+	filters VARCHAR(255) ,
+	firstDate INT(11), 
+	lastDate INT(11), 
+	direction VARCHAR(255)
+)
+BEGIN
+
+call `spSqlLog`(userId, CONCAT('call spListsB("',userId,'","',forUserIDs,'","',forLists,'","',filters,'","',firstDate,'","',lastDate,'","',direction,'")'), 0, 'spListsB');
+
+SET @userId = userId;			-- For this UserID.
+SET @forUserIDs = forUserIDs;	-- String of IDs to pull
+SET @forLists = forLists;		-- String of list name ids to pull
+SET @filters = filters;			-- incommon,shared,ditto
+SET @firstDate = firstDate;		-- The Oldest date in the current record set.
+SET @lastDate = lastDate;			-- The Newest Date in the current record set
+SET @direction = direction;		-- Older, Newer, or Both
+
+--  Removed duid set @thefields = ' a.id, a.tid, a.lid, a.uid, a.added, a.modified, a.duid, a.state ';
+set @thefields = ' a.id, a.tid, a.lid, a.uid, a.added, a.modified, a.state ';
+-- set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`uid`,`a`,`m`,`duid`,`state`,`myKey`)';
+set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`uid`,`a`,`m`,`state`,`myKey`,`show`,`listid`,`grouporder`)';
+
+SET @defaultlimit = 200;
+
+drop table if exists `temp_splists`;
+
+CREATE table temp_splists (
+	`id` INT(11),
+	`tid` int(11),
+	`lid` int(11),
+	`uid` int(11),
+	`a` datetime,
+	`m` datetime,
+	-- Removed. This will move to notifications and dittos. `duid` int(11),
+	`state` tinyint(1),
+	`myKey` int(11),
+	`listid` VARCHAR(20),
+	`show` BINARY,
+	`grouporder` tinyint(1)
+);
+
+-- This must have been some kind of debuggind. 
+ -- and a.tid not in (8082,7089,7088,7087,7086,7085,7084,7608,7517,7516,7515,7514,7513,7512,7511,7510,7509,7508,7507,7506,7505,7504,7503,7502,7501,7527,7487)
+
+-- My Stuff
+SET @myStuff = CONCAT(@insertTable, 
+	' select ', @thefields,' , a.id, false as `show` ,CONCAT(a.uid,"_",a.lid) as listid, 3 as grouporder
+	from tlist a 
+	
+	where a.uid = "',@userId,'" and a.state = 1 
+		
+	order by a.id desc
+	limit ',@defaultlimit);
+
+-- Dittoable 
+SET @dittoable = CONCAT(@insertTable, 
+	' select ', @thefields,' , b.id, true as `show`, CONCAT(a.uid,"_",a.lid) as listid, 1 as grouporder
+	from tlist a 
+	left outer join tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@userId,' 
+	where a.uid in (',@forUserIDs,') and a.state = 1 and b.state is null 
+		
+	order by a.id desc
+	limit ',@defaultlimit);
+
+
+-- Shared 
+SET @shared = CONCAT(@insertTable, 
+	' select ', @thefields,' , b.id, true as `show`,CONCAT(a.uid,"_",a.lid) as listid, 2 as grouporder
+	from tlist a 
+	inner join tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@userId,'
+	where a.uid in (',@forUserIDs,') and a.state = 1 and b.state = 1  
+		
+	order by a.id desc
+	limit ',@defaultlimit);
+
+prepare stmt from @dittoable;
+	execute stmt;
+	deallocate prepare stmt; 
+
+prepare stmt from @shared;
+	execute stmt;
+	deallocate prepare stmt;
+
+prepare stmt from @myStuff;
+	execute stmt;
+	deallocate prepare stmt;
+
+
+/* Result Set 1: List Contents */
+-- SELECT * FROM temp_splists order by uid desc, lid asc, a desc;
+select *, CONCAT(uid,'_',lid) as listkey from (
+select t.id, t.tid, t.lid, t.uid, t.a, t.m, t.state, t.myKey 
+	, a.name as thingname, b.name as username, c.name as listname
+	, b.fbuid, `show`, listid , 1 as customOrder
+from temp_splists t
+inner join tthing a on t.tid = a.id
+inner join tthing c on t.lid = c.id
+inner join tuser b on b.id = t.uid
+where uid != @userId
+
+
+UNION
+select t.id, t.tid, t.lid, t.uid, t.a, t.m, t.state, t.myKey 
+	, a.name as thingname, b.name as username, c.name as listname
+	, b.fbuid, `show`, listid , 2 as customOrder
+from temp_splists t
+inner join tthing a on t.tid = a.id
+inner join tthing c on t.lid = c.id
+inner join tuser b on b.id = t.uid
+where uid = @userId)
+as x order by customOrder desc, listid desc
+;
+
+/* Result Set 2: Thing Names 
+
+select * from (
+	select l.tid as id, a.name
+	from temp_splists l
+	inner join tthing a on a.id = l.tid
+
+
+	union 
+
+DELIMITER $$
+CREATE FUNCTION `fThingId`(newthingName TEXT) RETURNS int(11)
+BEGIN
+
+SET @newthingName = newthingName;
+
+SET @thingId = (select id from tthing where `name` = @newthingName limit 1);
+
+
+-- call log('new thing',CONCAT('thingID: ',@thingId, ' thingName: ',@newthingName));
+
+if(@thingId > 1) then 
+		-- call log('thing id was greater than 1. ',CONCAT('thingID: ',@thingId, ' thingName: ',@newthingName));
+
+	SET @thingId =  @thingId;
+else
+	-- call log('thing fail. ThingID was 0 or 1',@thingId);
+	insert into tthing (`name`) VALUES (@newthingName);
+
+	set @thingId =  LAST_INSERT_ID();
+end if;
+
+return @thingId;
+
+
+END$$
+DELIMITER ;
+
+	select  l.lid as id, a.name
+	from temp_splists l
+	inner join tthing a on a.id = l.lid
+) 
+as b
+order by id asc;
+*/
+/*
+ // Result Set 2: User Names 
+select distinct a.uid , b.name, b.fbuid
+from temp_splists a 
+inner join tuser b on a.uid = b.id;
+*/
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spPlittoFriendsFromFb`(friendString TEXT)
+BEGIN
+
+call `spSqlLog`(0, CONCAT('call spPlittoFriendsFromFb("',friendString,'")'), 0, 'spPlittoFriendsFromFb');
+
+SET @q = CONCAT('
+select group_concat(id SEPARATOR ",") as puids from tuser where fbuid in (',friendString,')');
+
+prepare stmt from @q;
+execute stmt;
+deallocate prepare stmt;
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spThingId`(thingname TEXT)
+BEGIN
+
+
+call `spSqlLog`(0, CONCAT('call spThingId("',thingname,'")'), 0, 'spThingId');
+
+SET @thingname = thingname;
+
+SET @thingid = fThingId(@thingname);
+
+select @thingid as thingid;
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -3680,4 +3716,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-09 15:14:09
+-- Dump completed on 2015-01-10 14:02:02

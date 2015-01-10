@@ -29,8 +29,10 @@ CREATE TABLE `tlist` (
   `modified` datetime NOT NULL,
   `state` tinyint(1) DEFAULT '1',
   `dittokey` int(11) NOT NULL DEFAULT '0',
+  `uuid` varchar(45) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `id_UNIQUE` (`tid`,`lid`,`uid`),
+  UNIQUE KEY `uuid_UNIQUE` (`uuid`),
   KEY `tuid_idx` (`uid`),
   KEY `lid_idx` (`lid`),
   KEY `dittokey_idx` (`dittokey`),
@@ -49,4 +51,4 @@ CREATE TABLE `tlist` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-09 15:14:09
+-- Dump completed on 2015-01-10 14:02:02
