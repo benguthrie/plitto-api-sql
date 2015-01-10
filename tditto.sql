@@ -34,7 +34,7 @@ CREATE TABLE `tditto` (
   KEY `byuserid_idx` (`userid`),
   CONSTRAINT `byuserid` FOREIGN KEY (`userid`) REFERENCES `tuser` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fromuserid` FOREIGN KEY (`sourceuserid`) REFERENCES `tuser` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=1917 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=1939 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -45,4 +45,4 @@ CREATE TABLE `tditto` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-10 14:02:02
+-- Dump completed on 2015-01-10 17:41:17

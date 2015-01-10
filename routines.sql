@@ -403,18 +403,27 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_addComment`( token VARCHAR(59), targetuid INT(12), lid INT(13), theTid INT(15), newComment VARCHAR(255), newStatus  TINYINT(1) )
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_addComment`( 
+	token VARCHAR(59), 
+    targetuid INT(12), 
+    lid INT(13), 
+    theTid INT(15), 
+    theItemUuid VARCHAR(45),
+    newComment VARCHAR(255), 
+    newStatus  TINYINT(1) 
+	)
 BEGIN
 SET @thetoken = token;
 SET @targetuid = targetuid;
 SET @lid = lid;
 SET @tid = theTid;
+SET @itemUuid = theItemUuid;
 SET @newComment = newComment;
 SET @newStatus = newStatus;
 -- call `v2.0_addComment`("75df7700d30cd7dfe84fa961d9c81e11","0","2503","2683", "0","0");
 -- Log
 CALL `spSqlLog`(0,  
-	CONCAT('call `v2.0_addComment`("',@thetoken,'","',@targetuid,'","',@lid,'","',@tid,'", "',
+	CONCAT('call `v2.0_addComment`("',@thetoken,'","',@targetuid,'","',@lid,'","',@tid,'", "' , @itemKey , '", "',
         CONVERT(@newComment using utf8)
         ,'","',
 		CONVERT(@newStatus using utf8)
@@ -433,8 +442,13 @@ select `uid`, `friendsarray` into @thisuid , @friendsarray from token where toke
 -- select @thisuid  as thisuid, @targetuid as targetuid , @thetoken as token;
 
 if @thisuid != ceil(@thisuid) or @thisuid is null then
-	select 'Invalid token' as errortxt, true as error
-		,@thetoken as thetoken, @thisuid as theuid, ceil(@thisuid) as ceiluid, @friendsarray as friendsarray
+	select 
+		'Invalid token' as errortxt, 
+        true as error,
+        @thetoken as thetoken, 
+        @thisuid as theuid, 
+        ceil(@thisuid) as ceiluid, 
+        @friendsarray as friendsarray
 	;
 	LEAVE proc_label;
 end if;
@@ -449,7 +463,7 @@ end if;
 -- Get the item that is being commented on.
 SET @itemKey = 0;
 
-SELECT id into @itemKey from tlist where uid = @targetuid and lid = @lid and tid = @tid limit 1; 
+SELECT id into @itemKey from tlist where uuid = @itemUuid limit 1; 
 -- select CONCAT("SELECT id into @itemKey from tlist where uid = ",@targetuid," and lid = ",@lid," and tid = ",@tid," limit 1; ") as test;
 -- SELECT id  , @targetuid as targetuid, @lid as lid , @thisuid as uid, @tid as tid from tlist where uid = @targetuid and lid = @lid and tid = @tid limit 1; 
 -- select CONCAT(" TEST! ", " SELECT id into @itemKey  from tlist where uid = ", @targetuid ," and lid = ", @lid ," and tid = ", @tid ,"  limit 1") as test; 
@@ -464,24 +478,33 @@ end if;
 
 if @newStatus = "1" and @newComment != "0" then
 	-- Insert the comment
-	INSERT into tcomments (`itemid`,`byuserid`,`comment`,`read`,`added`, `active`)
-	VALUES ( @itemKey, @thisuid, @newComment, 0, CURRENT_TIMESTAMP,1) on duplicate key update `comment` = CONVERT(@newComment using utf8), `active` = 1;
+	INSERT into tcomments 
+		(`itemid`,`byuserid`,`comment`,`read`,`added`, `active`)
+	VALUES 
+		( @itemKey, @thisuid, @newComment, 0, CURRENT_TIMESTAMP,1) 
+	on duplicate key update `comment` = CONVERT(@newComment using utf8), `active` = 1;
     
-    select CONCAT("INSERT into tcomments (`itemid`,`byuserid`,`comment`,`read`,`added`, `active`)
-	VALUES ( ",@itemKey,", ",@thisuid,", '",@newComment,"', 0, CURRENT_TIMESTAMP,1) on duplicate key update `comment` = CONVERT('",@newComment,"' using utf8), `active` = 1 ; 1, ? ") as debug;
+    select 
+		CONCAT("INSERT into tcomments (`itemid`,`byuserid`,`comment`,`read`,`added`, `active`)
+		VALUES ( ",@itemKey,", ",@thisuid,", '",@newComment,"', 0, CURRENT_TIMESTAMP,1) on duplicate key update `comment` = CONVERT('",@newComment,"' using utf8), `active` = 1 ; 1, ? ") 
+        as debug;
     SET @newStatus = "YES! Create Comment Not Null.";
     
 elseif @newStatus = "1" then -- @newComment must be "0" 
     	-- Insert the comment
-	INSERT into tcomments (`itemid`,`byuserid`,`comment`,`read`,`added`, `active`)
-	VALUES ( @itemKey, @thisuid, "", 0, CURRENT_TIMESTAMP,1) on duplicate key update `active` = 1;
+	INSERT into tcomments 
+		(`itemid`,`byuserid`,`comment`,`read`,`added`, `active`)
+	VALUES 
+		( @itemKey, @thisuid, "", 0, CURRENT_TIMESTAMP,1) 
+        on duplicate key update `active` = 1;
     
     select CONCAT("INSERT into tcomments (`itemid`,`byuserid`,`comment`,`read`,`added`, `active`)
 	VALUES ( ",@itemKey,", ",@thisuid,", '",@newComment,"', 0, CURRENT_TIMESTAMP,1) on duplicate key update `comment` = '', `active` = 1; 1,0 ") as debug;
     SET @newStatus = "YES!";
     
 elseif @newStatus = "0" then
-	update tcomments set `active` = 0 where byuserid = @thisuid and itemid = @itemKey limit 1;
+	update tcomments set `active` = 0 
+    where byuserid = @thisuid and itemid = @itemKey limit 1;
     SET @newStatus = "NO!";
 end if;
     
@@ -655,24 +678,20 @@ DELIMITER ;
 DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_ditto`(
 	thetoken VARCHAR(36), 
-	sourceuserid INT, 
-	thingid INT, 
-	listid INT, 
+	itemKey VARCHAR(45), 
 	theaction VARCHAR(20) 
 )
 BEGIN
 
 -- Sample: call spDitto("1","2","7779","7772","ditto","2,14,13")
-call `spSqlLog`(0, CONCAT('call v2.0_ditto("',thetoken,'","',sourceuserid,'","',thingid,'","',listid,'","',theaction,'")'), 0, 'v2.0_ditto');
+call `spSqlLog`(0, CONCAT('call v2.0_ditto("',thetoken,'","',itemKey,'" , "',theaction,'")'), 0, 'v2.0_ditto');
 
 
 SET @thetoken = thetoken;
 
 -- Process the variablesSET @sourceuserid = sourceuserid;
-SET @thingid = thingid;
-SET @listid = listid;
+SET @itemKey = itemKey;
 SET @theaction = theaction;
-SET @sourceuserid = sourceuserid;
 
 
 proc_label:BEGIN
@@ -693,16 +712,20 @@ if @uid != ceil(@uid) or @uid is null then
 	LEAVE proc_label;
 end if;
 
-
+-- Get the item, user and list ids for this ditto.
+select uid, lid, tid into @sourceUserId, @listId, @thingId from tlist where uuid = @itemKey limit 1;
 
 if @theaction LIKE 'ditto' then 
+
+	
+
 	-- INSERT INTO TLIST
 	INSERT INTO tlist (`tid`, `lid`, `uid`, `state`, `added`, `modified`,`uuid`)
-		VALUES (@thingid, @listid, @uid, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, UUID() )
+		VALUES ( @thingid, @listid, @uid, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, UUID() )
 	on duplicate key update state = 1;
 	
-	SET @thekey = (select id from tlist where tid = @thingid and lid = @listid and uid = @uid limit 1);
-	
+    -- Get the new key and uuid. 
+    select id, uuid into @theKey, @theUuid from tlist where tid = @thingId and lid = @listid and uid = @uid limit 1;
 
 
 	-- log the ditto - Working. 
@@ -710,7 +733,7 @@ if @theaction LIKE 'ditto' then
 	/* Insert into tditto only if it isn't the person dittoing themself. */
 	if @uid != @sourceuserid then 
 		insert into tditto (`userid`, `sourceuserid`, `thingid`, `listid`, `added`, `read`)
-		values (@uid, @sourceuserid, @thingid, @listid, CURRENT_TIMESTAMP, 0);
+		values ( @uid, @sourceUserId, @thingId, @listId, CURRENT_TIMESTAMP, 0);
 	end if;
 
 	-- Get the ditto key - FAILING
@@ -722,9 +745,9 @@ if @theaction LIKE 'ditto' then
 		from tditto 
 		where 
 			userid = ',CAST(@uid as CHAR(10)),' and 
-			sourceuserid = ',CAST(@sourceuserid as CHAR(10)),' and 
-			thingid = ',CAST(@thingid as CHAR(10)),' and 
-			listid = ',CAST(@listid as CHAR(10)),' 
+			sourceuserid = ',CAST(@sourceUserId as CHAR(10)),' and 
+			thingid = ',CAST(@thingId as CHAR(10)),' and 
+			listid = ',CAST(@listId as CHAR(10)),' 
 		order by id desc
 		limit 1
 	);');
@@ -739,18 +762,23 @@ if @theaction LIKE 'ditto' then
 	-- Add it to the list table. - This is working.
 	update tlist set dittokey = @dittokey where id = @thekey limit 1;
 
-	-- Return the thingid and thingname and listname for the benefit of the Javascript coder.`
-	-- SELECT @thekey as thekey;
 	
+	-- Return the thingid and thingname and listname for the benefit of the Javascript coder.`
 	SET @theQ = CONCAT('
 	select 
-		l.id as thekey, l.tid, t.name as thingname, l.lid, 
-		ln.name as listname, count(*) as friendsWith, `l`.`uuid`
+		l.id as thekey, 
+        l.tid, 
+        t.name as thingname, 
+        l.lid, 
+		ln.name as listname, 
+        count(*) as friendsWith, 
+        `l`.`uuid`
 	from tlist l
 	inner join tthing t on t.id = l.tid
 	inner join tthing ln on ln.id = l.lid
-	where l.tid = ',@thingid,' and l.lid = ',@listid,' and l.uid in (',@friendsarray,')
+	where l.tid = ', @thingId ,' and l.lid = ' , @listId ,' and l.uid in (',@friendsarray,')
 	group by l.tid, l.lid');
+    -- select @theQ;
 
 	prepare stmt from @theQ;
 	execute stmt;
@@ -758,12 +786,18 @@ if @theaction LIKE 'ditto' then
 
 elseif @theaction LIKE 'remove' then 
 	-- Set the state to 0.
-	UPDATE tlist SET state = 0 where tid = @thingid and lid = @listid and uid = @uid limit 1;
+	UPDATE tlist SET state = 0 where tid = @thingId and lid = @listId and uid = @uid limit 1;
 
 
 	-- Remove the notification and hide the ditto log.
-	update tditto set hidden = 1, `read` = 1
-	where userid = @uid and sourceuserid = @sourceuserid and thingid = @thingid and listid = @listid
+	update 
+		tditto set hidden = 1, 
+        `read` = 1
+	where 
+		userid = @uid and
+		sourceuserid = @sourceUserId and 
+        thingid = @thingId and 
+        listid = @listid
 	limit 1;
 
 	SELECT true as success;
@@ -1018,7 +1052,7 @@ SET @q = CONCAT(
 	l.tid, tn.name as thingname,
 	l.added, l.state, l.dittokey, dk.uid as dittouser, du.name as dittousername, du.fbuid as dittofbuid,
 	ml.id as mykey
-	, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
+	, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive , l.uuid
 from tlist l
 inner join tthing ln on ln.id = l.lid 
 inner join tthing tn on tn.id = l.tid 
@@ -1230,9 +1264,9 @@ else
 end if;
 
 --  Removed duid set @thefields = ' a.id, a.tid, a.lid, a.uid, a.added, a.modified, a.duid, a.state ';
-set @thefields = ' a.id, a.tid, a.lid, a.added, a.modified, a.state, a.dittokey ';
+set @thefields = ' a.id, a.tid, a.lid, a.added, a.modified, a.state, a.dittokey, a.uuid ';
 -- set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`uid`,`a`,`m`,`duid`,`state`,`myKey`)';
-set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`a`,`m`,`state`,`dittokey`,`uid`,`myKey`,`show`,`listid`,`grouporder`)';
+set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`a`,`m`,`state`,`dittokey`, `uuid`, `uid`,`myKey`,`show`,`listid`,`grouporder`)';
 
 SET @defaultlimit = 25;
 
@@ -1251,7 +1285,9 @@ CREATE table temp_splists (
 	`listid` VARCHAR(20),
 	`show` TINYINT(1),
 	`grouporder` tinyint(1),
-	`dittokey` INT(11)	-- This is where they got their link from
+	`dittokey` INT(11),	-- This is where they got their link from
+    `uuid` VARCHAR(45)
+    
 	
 );
 -- ',@listadendum,' 
@@ -1260,7 +1296,12 @@ CREATE table temp_splists (
 if @thetype like 'list' then
 	SET @myItems = CONCAT(
 		@insertTable, 
-		' select ', @thefields,', a.uid , a.id, 1 , CONCAT(a.uid,"_",a.lid) as listid, 1 as grouporder
+		' select 
+			', @thefields,', 
+			a.uid , 
+            a.id, 1, 
+            CONCAT(a.uid,"_",a.lid) as listid, 
+            1 as grouporder
 		from tlist a 
 		
 		where a.uid =',@uid,' and a.state = 1 
@@ -1282,7 +1323,8 @@ end if;
 		@insertTable, 
 		' select ', @thefields,', a.uid , b.id, 1 , CONCAT(a.uid,"_",a.lid) as listid, 1 as grouporder
 		from tlist a 
-		left outer join tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@uid,' 
+		left outer join 
+			tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@uid,' 
 		where a.uid in (',@forUserIDs,') and a.state = 1 and b.state is null 
 			',@listadendum,' 
 			',@theNotWhere,'
@@ -1295,7 +1337,8 @@ end if;
 		@insertTable, 
 		' select ', @thefields,', a.uid , b.id, 1,CONCAT(a.uid,"_",a.lid) as listid, 2 as grouporder
 		from tlist a 
-		inner join tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@uid,'
+		inner join 
+			tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@uid,'
 		where a.uid in (',@forUserIDs,') and a.state = 1 and b.state = 1  
 			',@listadendum,' 
 			',@theNotWhere,'
@@ -1308,7 +1351,8 @@ end if;
 		-- Hard code 0 as the anonymous user id.
 		' select ', @thefields,', 0 , a.id, 1,CONCAT("0_",a.lid) as listid, 3 as grouporder
 		from tlist a 
-		left outer join tlist b on b.lid = a.lid and b.tid = a.tid and b.uid = ',@uid,' and b.state =1 and b.id is null
+		left outer join 
+			tlist b on b.lid = a.lid and b.tid = a.tid and b.uid = ',@uid,' and b.state =1 and b.id is null
 		where a.uid not in (',@uid,',',@forUserIDs,') and a.state = 1
 			',@listadendum,' 
 			',@theNotWhere,'
@@ -1347,7 +1391,7 @@ select b.id
 from (
 	select * , CONCAT(uid,'_',lid) as listkey 
 	from (
-	select t.id, t.tid, t.lid, t.uid, t.a, t.m, t.state, t.myKey , t.dittokey
+	select t.id, t.tid, t.lid, t.uid, t.a, t.m, t.state, t.myKey , t.dittokey, t.uuid
 		-- , a.name as thingname, b.name as username, c.name as listname
 		-- , b.fbuid
 		, `show`, listid , 1 as customOrder
@@ -1359,7 +1403,7 @@ from (
 
 
 	UNION
-	select t.id, t.tid, t.lid, t.uid, t.a, t.m, t.state, t.myKey , t.dittokey
+	select t.id, t.tid, t.lid, t.uid, t.a, t.m, t.state, t.myKey , t.dittokey, t.uuid
 		-- , a.name as thingname, b.name as username, c.name as listname
 		-- , b.fbuid
 		, `show`, listid , 2 as customOrder
@@ -1551,6 +1595,7 @@ ELSE
 	SET @havingShared = ' HAVING thecount > 2 ';
 	SET @myKeyFilter = ' ';
 END IF;
+
 -- Get some content from the user's friends first, then optionally, from strangers.
 /* BEGIN POPULATING VARIABLES TO USE TO SELECT FROM MY FRIENDS */
 	-- Batch A - A list from a friend that I also have, with at least 3 dittoable things in it, that I don't have. 
@@ -1702,6 +1747,7 @@ CREATE TABLE showsometemp (
 	tid INT,
 	lid INT,
 	uid INT,
+    uuid VARCHAR(45), -- Adds the unique identifier to the table.
 	added DATETIME,
 	modified DATETIME,
 	state INT,
@@ -1731,10 +1777,11 @@ IF @Alid > 0 AND @Auid > 0 THEN
 		dittoable, 
 		lastshowncount , 
 		lastshown, 
-		mykey )
+		mykey, 
+        uuid )
 	SELECT l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.state, l.dittokey, 1, ',@Adittoable,'
 		, pt.count, pt.lastdate
-		, m.id
+		, m.id, l.uuid
 	FROM tlist l
 	LEFT OUTER JOIN tlist m ON m.uid = ',@uid,' AND m.lid = l.lid AND m.tid = l.tid 
 	LEFT OUTER JOIN presentthing pt ON pt.tlistkey = l.id and pt.uid = ',@uid,' 
@@ -1767,10 +1814,12 @@ IF @Blid > 0 AND @Buid > 0 THEN
 		dittoable, 
 		lastshowncount , 
 		lastshown, 
-		mykey )
+		mykey,
+        uuid )
 	SELECT l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.state, l.dittokey, 2, ',@Bdittoable,'
 		, pt.count, pt.lastdate
 		, m.id
+        , l.uuid 
 	FROM tlist l
 	LEFT OUTER JOIN tlist m ON m.uid = ',@uid,' AND m.lid = l.lid AND m.tid = l.tid 
 	LEFT OUTER JOIN presentthing pt ON pt.tlistkey = l.id and pt.uid = ',@uid,' 
@@ -1796,8 +1845,18 @@ IF CHAR_LENGTH(@Clid) > 0 AND CHAR_LENGTH(@Cuid) > 0 THEN
 		dittoable, 
 		lastshowncount , 
 		lastshown,
-		mykey )
-	select l.id, l.tid, l.lid, 0, l.added, l.modified, l.state, l.dittokey, 3, ',@Cdittoable,', pt.count, pt.lastdate, m.id
+		mykey,
+        uuid 
+	)
+	select 
+		l.id, 
+		l.tid, 
+        l.lid, 
+        0, 
+        l.added, 
+        l.modified, l.state, l.dittokey, 3, ',@Cdittoable,', pt.count, pt.lastdate, 
+		m.id,
+        l.uuid
 	from tlist l
 	left outer join tlist m on m.uid = ',@uid,'
 	 and m.lid = l.lid and m.tid = l.tid and m.state = 1
@@ -1810,12 +1869,48 @@ IF CHAR_LENGTH(@Clid) > 0 AND CHAR_LENGTH(@Cuid) > 0 THEN
 END IF;
 -- INSERT RESULTS FROM D if it's valid.
 IF CHAR_LENGTH(@Dlid) > 0 AND CHAR_LENGTH(@Duid) > 0 THEN
-	SET @insertD = CONCAT('INSERT INTO showsometemp(id,tid,lid,uid,added,modified,state, dittokey, groupid, dittoable, lastshowncount , lastshown, mykey )
-	select l.id, l.tid, l.lid, 0, l.added, l.modified, l.state, l.dittokey, 4, ',@Ddittoable,', pt.count, pt.lastdate, m.id
+	SET @insertD = CONCAT('
+    INSERT INTO showsometemp(
+		id,
+        tid,
+        lid,
+        uid,
+        added,
+        modified,
+        state, 
+        dittokey, 
+        groupid, 
+        dittoable, 
+        lastshowncount, 
+        lastshown, 
+        mykey, 
+        uuid  
+	)
+	select 
+		l.id, 
+        l.tid, 
+        l.lid, 
+        0, 
+        l.added, 
+        l.modified, 
+        l.state, 
+        l.dittokey, 
+        4, 
+        ',@Ddittoable,', 
+        pt.count, 
+        pt.lastdate, 
+        m.id, 
+        l.uuid
 	from tlist l
-	left outer join tlist m on m.uid = ',@uid,' and m.lid = l.lid and m.tid = l.tid
-	left outer join presentthing pt on pt.tlistkey = l.id and pt.uid = ',@uid,' 
-	where l.uid not in (',@uid,',',@friendArray,') and l.lid = ', @Dlid ,' and l.state = 1 ',@myKeyFilter ,'
+	left outer join 
+		tlist m on m.uid = ',@uid,' and m.lid = l.lid and m.tid = l.tid
+	left outer join 
+		presentthing pt on pt.tlistkey = l.id and pt.uid = ',@uid,' 
+	where 
+		l.uid not in (',@uid,',',@friendArray,') 
+        and l.lid = ', @Dlid ,' 
+        and l.state = 1 
+        ',@myKeyFilter ,'
 	order by pt.lastdate asc
 	limit 10');
 	-- 
@@ -1826,11 +1921,29 @@ END IF;
 /* RESTORE THIS LATER */
 -- SELECT 'return the results' as line337;
 SELECT 
-s.id, s.uid, un.name AS username, un.fbuid,  s.lid, lna.name AS listname, s.tid
-, tn.name AS thingname,   s.added, s.state, s.dittokey AS dittokey, s.dittoable , s.groupid
-, dk.uid AS dittouser, du.name AS dittousername, du.fbuid AS dittofbuid, lastshowncount, lastshown
-, mykey AS mykey
-, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
+	s.id, 
+    s.uid, 
+    un.name AS username, 
+    un.fbuid, 
+    s.lid, 
+    lna.name AS listname, 
+    s.tid, 
+	tn.name AS thingname,   
+    s.added, 
+    s.state, 
+    s.dittokey AS dittokey, 
+    s.dittoable , 
+    s.groupid, 
+	dk.uid AS dittouser, 
+    du.name AS dittousername, 
+    du.fbuid AS dittofbuid, 
+    lastshowncount, 
+    lastshown, 
+    mykey AS mykey, 
+    tc.`comment` as commentText, 
+    tc.`read` as commentRead, 
+    tc.`active` as commentActive,
+    s.uuid
 
 FROM showsometemp s
 
@@ -2156,7 +2269,8 @@ CREATE TABLE showsometemp (
 	dittoable INT,
 	lastshowncount INT,
 	lastshown DATETIME,
-	mykey INT
+	mykey INT,
+    uuid VARCHAR(45)
 	
 	, PRIMARY KEY (sstid)
 );		
@@ -2164,16 +2278,26 @@ CREATE TABLE showsometemp (
 -- Start with Feed, which has a different query
 	if @theType = 'feed' then		
 		SET @q = CONCAT('
-		select l.id, l.uid, un.name AS username, un.fbuid,  
-		l.lid, lna.name AS listname, l.tid
+		select 
+			l.id, 
+			l.uid, 
+			un.name AS username, 
+			un.fbuid,  
+			l.lid, 
+            lna.name AS listname, 
+            l.tid
 			, tn.name AS thingname,   
-			l.added, l.state, 
+			l.added, 
+            l.state, 
 			l.dittokey AS dittokey
 			, dk.uid AS dittouser, 
 			du.name AS dittousername, 
 			du.fbuid AS dittofbuid, 
 			m.id as mykey
-            , tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
+            , tc.`comment` as commentText, 
+            tc.`read` as commentRead, 
+            tc.`active` as commentActive,
+            l.uuid
 		from tlist l
 			INNER JOIN tthing tn ON tn.id = l.tid
 			INNER JOIN tuser un ON un.id = l.uid
@@ -2181,27 +2305,39 @@ CREATE TABLE showsometemp (
 			LEFT OUTER JOIN tlist dk ON dk.id = l.dittokey 
 			LEFT OUTER JOIN tuser du ON du.id = dk.uid
 			LEFT OUTER JOIN tlist m on m.uid = ',@uid,' and m.lid = l.lid and m.tid = l.tid and m.state = 1
-            left outer join tcomments tc on tc.itemid = l.id and tc.byuserid = @uid
+            left outer join tcomments tc on tc.itemid = l.id and tc.byuserid = ',@uid,'
 		where 
 			l.state = 1 ',@userCriteria,' ',@oldestKeyCriteria,'
 			and l.lid =',@listId,'
 		order by l.id desc
 		limit 30');
-		prepare stmt from @q; 	execute stmt; 	deallocate prepare stmt;
-		-- select @q as thequery;
+        
+        -- select @q as thequery; -- TODO Shouldn't be active.
+        prepare stmt from @q; 	execute stmt; 	deallocate prepare stmt;
+		
 		
 	ELSEIF @theType = 'mine' THEN		
 		SET @q = CONCAT('
-		select l.id, l.uid, un.name AS username, un.fbuid,  
-		l.lid, lna.name AS listname, l.tid
-			, tn.name AS thingname,   
-			l.added, l.state, 
+		select 
+			l.id, 
+            l.uid,
+            un.name AS username, 
+            un.fbuid,  
+			l.lid, 
+            lna.name AS listname, 
+            l.tid, 
+            tn.name AS thingname,   
+			l.added, 
+            l.state, 
 			l.dittokey AS dittokey
 			, dk.uid AS dittouser, 
 			du.name AS dittousername, 
 			du.fbuid AS dittofbuid, 
 			m.id as mykey
-            , tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
+            , tc.`comment` as commentText, 
+            tc.`read` as commentRead, 
+            tc.`active` as commentActive,
+            l.uuid
 		from tlist l
 			INNER JOIN tthing tn ON tn.id = l.tid
 			INNER JOIN tuser un ON un.id = l.uid
@@ -2220,8 +2356,8 @@ CREATE TABLE showsometemp (
 		
 	ELSEIF @theType = 'ditto' THEN
 			SET @q = CONCAT('
-		INSERT INTO showsometemp(`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`)
-		select l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.dittokey AS dittokey, m.id
+		INSERT INTO showsometemp (`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`,`uuid`)
+		select l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.dittokey AS dittokey, m.id, l.uuid
 		from tlist l
 			LEFT OUTER JOIN tlist dk ON dk.id = l.dittokey 
 			LEfT OUTER JOIN presentthing pt on pt.tlistkey = l.id 
@@ -2236,10 +2372,25 @@ CREATE TABLE showsometemp (
 		
 		-- Join the items and return them.
 		select  
-		s.id, s.uid, u.name as username, u.fbuid,
-		s.lid, lna.name as listname, s.tid, tn.name as thingname,
-		s.added, s.state, s.dittokey, dk.uid as dittouser, du.name as dittousername, du.fbuid as dittofbuid, s.mykey
-        , tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
+			s.id, 
+            s.uid, 
+            u.name as username, 
+            u.fbuid,
+			s.lid, 
+            lna.name as listname, 
+            s.tid, 
+            tn.name as thingname,
+			s.added, 
+            s.state, 
+            s.dittokey, 
+            dk.uid as dittouser, 
+            du.name as dittousername, 
+            du.fbuid as dittofbuid, 
+            s.mykey, 
+            tc.`comment` as commentText, 
+            tc.`read` as commentRead, 
+            tc.`active` as commentActive, 
+            s.uuid
 		from showsometemp s
 			inner join tuser u on u.id = s.uid 
 			inner join tthing lna ON lna.id = s.lid
@@ -2265,8 +2416,8 @@ CREATE TABLE showsometemp (
         
 ELSEIF @theType = 'shared' THEN
 			SET @q = CONCAT('
-		INSERT INTO showsometemp(`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`)
-		select l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.dittokey AS dittokey, m.id
+		INSERT INTO showsometemp(`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`,`uuid`)
+		select l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.dittokey AS dittokey, m.id, l.uuid
         
 		from tlist l
 			LEFT OUTER JOIN tlist dk ON dk.id = l.dittokey 
@@ -2286,7 +2437,7 @@ ELSEIF @theType = 'shared' THEN
 		s.id, s.uid, u.name AS username, u.fbuid,
 		s.lid, lna.name AS listname, s.tid, tn.name AS thingname,
 		s.added, 1, s.dittokey, dk.uid AS dittouser, du.name AS dittousername, du.fbuid AS dittofbuid, s.mykey
-        , tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
+        , tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive, s.uuid
 		FROM showsometemp s
 			INNER JOIN tuser u ON u.id = s.uid 
 			INNER JOIN tthing lna ON lna.id = s.lid
@@ -2312,8 +2463,17 @@ ELSEIF @theType = 'shared' THEN
         
 ELSEIF @theType = 'strangers' THEN
 			SET @q = CONCAT('
-		INSERT INTO showsometemp(`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`)
-		select l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.dittokey AS dittokey, m.id
+		INSERT INTO showsometemp(`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`,`uuid`)
+		select 
+			l.id, 
+            l.tid, 
+            l.lid, 
+            l.uid, 
+            l.added, 
+            l.modified, 
+            l.dittokey AS dittokey, 
+            m.id, 
+            l.uuid
 		from tlist l
 			LEFT OUTER JOIN tlist dk ON dk.id = l.dittokey 
 			LEFT OUTER JOIN tlist m on m.uid = ',@uid,' and m.lid = l.lid and m.tid = l.tid and m.state = 1
@@ -2328,10 +2488,21 @@ ELSEIF @theType = 'strangers' THEN
 		
 		-- Join the items and return them.
 		SELECT  
-		s.id, 0 as `uid`, 'Stranger' AS username, 0 as `fbuid`,
-		s.lid, lna.name AS listname, s.tid, tn.name AS thingname,
-		s.added, 1, s.dittokey, dk.uid AS dittouser, du.name AS dittousername, du.fbuid AS dittofbuid, s.mykey
-        , tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
+			s.id, 0 as `uid`, 
+            'Stranger' AS username, 
+            0 as `fbuid`,
+			s.lid, lna.name AS listname, 
+            s.tid, tn.name AS thingname,
+			s.added, 1, s.dittokey, 
+            dk.uid AS dittouser, 
+            du.name AS dittousername, 
+            du.fbuid AS dittofbuid, 
+            s.mykey
+			, tc.`comment` as commentText, 
+            tc.`read` as commentRead, 
+            tc.`active` as commentActive,
+            s.uuid
+            
 		FROM showsometemp s
 			-- INNER JOIN tuser u ON u.id = s.uid 
 			INNER JOIN tthing lna ON lna.id = s.lid
@@ -3716,4 +3887,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-10 14:02:02
+-- Dump completed on 2015-01-10 17:41:16
