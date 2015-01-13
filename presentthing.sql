@@ -32,7 +32,7 @@ CREATE TABLE `presentthing` (
   KEY `pttlkey_idx` (`tlistkey`),
   CONSTRAINT `pttlkey` FOREIGN KEY (`tlistkey`) REFERENCES `tlist` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `ptuif` FOREIGN KEY (`uid`) REFERENCES `tuser` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=30352 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=30356 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -43,4 +43,4 @@ CREATE TABLE `presentthing` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-10 17:41:16
+-- Dump completed on 2015-01-10 18:22:19
