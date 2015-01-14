@@ -823,8 +823,56 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_extendFbToken`( varPlittoToken VARCHAR(45), varFbLongToken VARCHAR(255) )
+BEGIN
+
+SET @plittoToken = varPlittoToken;
+SET @fbLongToken = varFbLongToken;
+
+-- Check to see if the token is valid.
+
+select `id` into @plittoTokenid 
+from `token`
+where 
+	`token`.`token` = @plittoToken and
+	`token`.`active` = 1
+limit 1;
+
+-- Check to see if it is valid 
+
+if LENGTH(@plittoTokenid) > 0 then
+	-- The token is valud. Now update with the new long token
+    update `token` 
+    SET `token`.`fbToken` = @fbLongToken
+    WHERE `token`.`id` = @plittoTokenId
+    LIMIT 1;
+    
+    select true as `success`, 'Token updated to long token' as `successMessage`;
+    
+    
+else 
+
+	select true as `error`, 'invalid or expired Plitto token passed' as `errortxt`;
+	
+end if;
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_fbLogin`(
-	fbuid BIGINT, fbname VARCHAR(255), fbemail VARCHAR(255) , fbfriendsarray TEXT, fbToken VARCHAR(255) )
+	fbuid BIGINT, fbname VARCHAR(255), fbemail VARCHAR(255) , fbfriendsarray TEXT, newFbToken VARCHAR(255) )
 BEGIN
 /*
 	Returns a token for this user's session.
@@ -842,7 +890,7 @@ SET @puid = null;
 SET @active = null;
 SET @username = null;
 SET @email = null;
-SET @fbToken = fbToken;
+SET @newFbToken = newFbToken;
 SET @newAccount = false;
 SET @friendids = '';
 -- Step 1 -- see if this account already exists. If so create some variables to hold their information.
@@ -907,19 +955,19 @@ if @newAccount = true then
 end if;
 	
 -- Get the old fbToken: 
-SELECT fbToken, id  into @oldFbToken, @oldTokenId from token where uid = @puid and active = 1 limit 1;
+SELECT `fbToken`, `id`  into @oldFbToken, @oldTokenId from token where uid = @puid and active = 1 limit 1;
 
 
 -- Update the token if there is a new facebook token. Check for the existing one.
-if @oldFbToken != @fbToken and LENGTH(@oldFbToken) > 0 then
+if @oldFbToken != @newFbToken and LENGTH(@oldFbToken) > 0 then
 -- select @oldFbToken as oldFbToken, @fbToken as newFbToken, @puid as puid;
 	-- Deactivate the old token
-    update token set active = 0, `end` = CURRENT_TIMESTAMP where `token` = @token and id = @oldTokenId ;
+    update token set active = 0, `end` = CURRENT_TIMESTAMP where id = @oldTokenId ;
     
     -- Create a new one.
-    SET @newToken = MD5(CONCAT('!%!connect!%!',UUID()));
-    insert into token (`token`, `uid`,`start`,`active`,`usecount`,`friendsarray`,`logincount`,`fbToken`) 
-    VALUES (@newToken, @puid, CURRENT_TIMESTAMP, 1, 1, @friendids, 1, @fbToken );
+    SET @newPlittoToken = MD5(CONCAT('!%!connect!%!',UUID()));
+    insert into token (`token`, `uid`,`start`,`active`,`usecount`,`friendsarray`,`logincount`,`fbToken`, `lastUsed`) 
+    VALUES (@newPlittoToken, @puid, CURRENT_TIMESTAMP, 1, 1, @friendids, 1, @newFbToken, CURRENT_TIMESTAMP );
     
 end if;
 
@@ -927,20 +975,26 @@ end if;
 if ceil(@puid) = @puid then
 	-- SELECT 'matching puids' AS debugMessage, @puid as theuid;
 	-- update token set `end` = CURRENT_TIMESTAMP, active = 0 where uid = @puid and active = 1 limit 1;
-	SET @token = '';
+    
+    -- Initialize the Plitto Token
+	SET @plittoToken = '';
 	-- See if this user has a valid token already.
-	SELECT token, fbtoken into @token, @oldFbToken from token where uid = @puid and active = 1 limit 1;
+	SELECT token, fbtoken into @plittoToken, @oldFbToken from token where uid = @puid and active = 1 limit 1;
     
 	
-	if CHAR_LENGTH(@token) = 0 then
+	if CHAR_LENGTH(@plittoToken) = 0 then
 		
 	
 		-- Create a token
-		SET @token = MD5(CONCAT('!%!connect!%!',UUID()));
-		insert into token (`token`,`uid`,`start`,`active`,`usecount`,`friendsarray`,`fbToken`) VALUES (@token,@puid,CURRENT_TIMESTAMP,1,1, @friendids , @fbToken );
+		SET @plittoToken = MD5(CONCAT('!%!connect!%!',UUID()));
+		insert into token (`token`,`uid`,`start`,`active`,`usecount`,`friendsarray`,`fbToken`, `lastUsed`) 
+        VALUES ( @plittoToken, @puid, CURRENT_TIMESTAMP, 1, 1, @friendids, @newFbToken, CURRENT_TIMESTAMP );
 	else 
 		-- Update their friends.
-        update token set `friendsarray` = @friendids, `usecount` = `usecount` + 1  where `token` = @token  order by id limit 1;
+        update token 
+			set `friendsarray` = @friendids, `usecount` = `usecount` + 1, `lastUsed` = CURRENT_TIMESTAMP 
+			where `token` = @plittoToken  
+            order by id limit 1;
     
 	END IF;
     
@@ -949,7 +1003,7 @@ if ceil(@puid) = @puid then
     
 	
 end if;
-select @puid as puid, @username as username, @fbuid as fbuid, @token as token, @friendids as friendids; 
+select @puid as puid, @username as username, @fbuid as fbuid, @plittoToken as token, @friendids as friendids; 
 /*
 */
 -- 
@@ -3887,4 +3941,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-10 18:22:18
+-- Dump completed on 2015-01-14 12:29:56
