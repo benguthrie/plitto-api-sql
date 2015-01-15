@@ -99,6 +99,75 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `adminAddItemKeyToTDitto`()
+BEGIN
+
+/*
+ALTER TABLE `plitto2014`.`tlist` 
+ADD COLUMN `uuid` VARCHAR(45) NULL AFTER `dittokey`;
+*/
+
+SET @changeCount = (select count(*) from tditto where itemDittoed is null);
+
+SET @loopCount = 0;
+
+goodTimes:BEGIN
+
+while @loopCount < @changeCount DO
+	
+    SET @tdKey = null, @tdThingId = null, @tdListId = null, @tdUserId = null, @tdSourceUserId = null, @tListKey = null;
+    
+    SELECT id, thingid, listid, userid, sourceuserid 
+		into @tdKey, @tdThingId, @tdListId, @tdUserId, @tdSourceUserId 
+	from tditto
+    where itemDittoed is null
+    limit 1;
+
+	if @tdKey is null then
+		LEAVE goodTimes;
+	end if;
+
+	SELECT 
+		`id` into @tListKey 
+    from `tlist` 
+    where 
+		`tlist`.`tid` = @tdThingId and 
+		`tlist`.`lid` = @tdListId and 
+        `tlist`.`uid` = @tdSourceUserId
+    limit 1;
+
+	UPDATE tditto 
+	set `itemDittoed` = @tListKey
+	where `tditto`.`id` = @tdKey
+    limit 1;
+	
+	SET @loopCount = @loopCount + 1;
+
+END WHILE;
+
+END; -- END goodTimes
+
+if @tdKey != null then
+	SELECT @changeCount as `toChange`, @loopCount as `changed`, false as `errorOut`;
+else
+	SELECT @changeCount as `toChange`, @loopCount as `changed`, true as `errorOut`, @tdKey, @tdThingId, @tdListId, @tdUserId, @tdSourceUserid, @tListKey;
+end if;
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `adminAddUuidToTlist`()
 BEGIN
 
@@ -602,6 +671,196 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_chatAbout`(vToken VARCHAR(55), vUserFilter INT(12) )
+BEGIN
+
+SET @thetoken = vToken;
+SET @userFilter = vUserFilter;
+
+-- TODO1 - It should be ordered by newest ditto and or comment.
+
+goodTimes:BEGIN
+
+-- Clear existing variables.
+SET @uid = null;
+SET @friendsarray = null;
+
+-- Get the user from the token.
+select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
+
+if @uid != ceil(@uid) or @uid is null then
+	select 'Invalid token' as errortxt, true as `error`, 
+		@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
+	;
+	LEAVE goodTimes;
+end if;
+
+-- Condititional where user statement
+-- SET @userFilterView = CONCAT(" and d.userid = @uid or d.sourceuserid = @uid ");
+-- Don't show my dittos out, by default.
+
+SET @chatKeys =  "";
+SET @tempKeys = "";
+SET @groupLimit = 10;
+SET @userFilterWhere = '';
+
+IF @userFilter != 0 THEN
+	SET @userFilterWhereA = CONCAT(' and `tditto`.`sourceuserid` in (',@userFilter,') ');
+    SET @userFilterWhereB = CONCAT(' and `tditto`.`userid` in (',@userFilter,') ');
+    SET @userFilterWhereC = CONCAT(' and `tlist`.`uid` in (', @userFilter,') ');
+    SET @userFilterWhereD = CONCAT(' and `tcomments`.`byuserid` in (', @userFilter,') ');
+ELSE
+	SET @userFilterWhereA = '';
+    SET @userFilterWhereB = '';
+    SET @userFilterWhereC = '';
+    SET @userFilterWhereD = '';
+END IF;
+
+-- Temp Table for this.
+DROP TABLE IF EXISTS `temp_chatAbout`;
+CREATE TABLE `temp_chatAbout` (
+	`id` int(4) NOT NULL AUTO_INCREMENT,
+    `noteType` TINYINT(1),
+    `tlid` INT(11),
+    `dateOfInterest` DATETIME,
+	`read` TINYINT(1),
+    PRIMARY KEY (`id`),
+    UNIQUE KEY (`tlid`)
+    
+);
+
+
+-- TODO1 - If this is not for a specific user filter @userfilter, skip the two that are me to them.
+
+-- Step 1 - Ditto Inputs - Outgoing.
+	SET @queryA = CONCAT('
+		INSERT INTO `temp_chatAbout` (`noteType`,`tlid`,`dateOfInterest`,`read`)
+        
+		select 0, `tditto`.`itemDittoed`, `tditto`.`added`, `tditto`.`read` 
+		from tditto 
+		where tditto.userid = ',@uid,' and tditto.hidden = 0 ',@userFilterWhereA,'
+        group by tditto.`itemDittoed` 
+		order by id desc
+		limit ',@groupLimit,'
+        on duplicate key update noteType = 0;    
+	');
+        
+	prepare stmt from @queryA;
+	execute stmt;
+	deallocate prepare stmt;
+
+-- Step 2 - Ditto Inputs - Incoming.
+	if @userFilter != 0 then 
+		SET @queryB = CONCAT('
+			INSERT INTO `temp_chatAbout` (`noteType`,`tlid`,`dateOfInterest`,`read`)
+			
+				select 1, `tditto`.`itemDittoed`, `tditto`.`added`, `tditto`.`read` 
+				from tditto 
+				where tditto.sourceuserid = ',@uid,' and tditto.hidden = 0 ',@userFilterWhereB,'
+				group by tditto.`itemDittoed` 
+				order by id desc
+				limit ',@groupLimit,'
+			on duplicate key update noteType = 1;    
+			');
+
+
+		prepare stmt from @queryB;
+		execute stmt;
+		deallocate prepare stmt;
+	End If ;
+        
+-- Step 3 - Chat Messages - Incoming
+
+	SET @queryC = CONCAT('
+		INSERT INTO `temp_chatAbout` (`noteType`,`tlid`,`dateOfInterest`,`read`)
+        
+			select 2, `tcomments`.`itemid`, `tcomments`.`added`, `tcomments`.`conversed` 
+			from tcomments
+            inner join tlist on tlist.id = tcomments.itemid
+            where tcomments.byuserid = "',@uid, '" ',@userFilterWhereC,' and `tlist`.`state` = 1
+            
+			
+			group by tcomments.`itemid` 
+			order by `tcomments`.`id` desc
+			limit ',@groupLimit,'
+        on duplicate key update noteType = 2;    
+		');
+    
+    prepare stmt from @queryC;
+	execute stmt;
+	deallocate prepare stmt;
+    
+    
+
+-- Step 4 - Chat Messages - Outgoing
+if @userFilter != 0 then 
+	SET @queryD = CONCAT('
+		INSERT INTO `temp_chatAbout` (`noteType`,`tlid`,`dateOfInterest`,`read`)
+        
+			select 3, `tcomments`.`itemid`, `tcomments`.`added`, `tcomments`.`conversed` 
+			from tcomments
+            inner join tlist on tlist.id = tcomments.itemid
+            where `tlist`.`uid`=',@uid,' ',@userFilterWhereD,' and `tlist`.`state` = 1
+			
+			group by tcomments.`itemid` 
+			order by `tcomments`.`id` desc
+			limit ',@groupLimit,'
+        on duplicate key update noteType = 3;    
+		');
+    
+    prepare stmt from @queryD;
+	execute stmt;
+	deallocate prepare stmt;
+end if;    
+
+	SET @qe = CONCAT('
+	select 
+		tl.id, tl.uid, un.name as username, un.fbuid, tl.lid, ln.name as listname, tl.tid, tn.name as thingname, tl.added, tl.state, tl.dittokey, 
+		tca.noteType as groupid, 
+        td.userid as dittouser, tdu.name as dittousername, tdu.fbuid as dittofbuid, 0 as mykey, tc.comment as commentText, tc.read as commentRead, tc.active as commentActive,
+        cu.id as commentuserid, cu.name as commentusername, cu.fbuid as commentfbuid, tl.uuid
+
+
+		-- tca.notetype, 
+		
+		-- tca.tlid, tca.dateofinterest, tca.read,
+		-- tl.added, tca.tlid, tl.dittokey, tdu.fbuid, tdu.username as dittousername, tn.name as thingname
+		-- *
+	from temp_ChatAbout tca 
+	inner join tlist tl on tl.id = tca.tlid
+	left outer join tditto td on tl.dittokey = td.id and tl.dittokey !=0 
+	left outer join tuser tdu on td.sourceuserid = tdu.id
+    
+	inner join tthing tn on tn.id = tl.tid 
+	inner join tthing ln on ln.id = tl.lid
+	inner join tuser un on un.id = tl.uid
+	left outer join tcomments tc on tc.itemid = tl.id and (tc.byuserid = ',@uid,' and tl.uid in (',@userFilter,') ) or (tc.byuserid in (',@userFilter,') and tl.uid = ',@uid,')
+    left outer join tuser cu on cu.id = tc.byuserid 
+    order by tca.id desc
+	');
+    prepare stmt from @qe;
+	execute stmt;
+	deallocate prepare stmt;
+    
+
+
+END;
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_counts`(vToken VARCHAR(50) )
 BEGIN
 
@@ -713,7 +972,7 @@ if @uid != ceil(@uid) or @uid is null then
 end if;
 
 -- Get the item, user and list ids for this ditto.
-select uid, lid, tid into @sourceUserId, @listId, @thingId from tlist where uuid = @itemKey limit 1;
+select id, uid, lid, tid into @tlistId, @sourceUserId, @listId, @thingId from tlist where uuid = @itemKey limit 1;
 
 if @theaction LIKE 'ditto' then 
 
@@ -725,15 +984,18 @@ if @theaction LIKE 'ditto' then
 	on duplicate key update state = 1;
 	
     -- Get the new key and uuid. 
-    select id, uuid into @theKey, @theUuid from tlist where tid = @thingId and lid = @listid and uid = @uid limit 1;
+    select id, uuid 
+		into @theKey, @theUuid 
+	from tlist 
+    where tid = @thingId and lid = @listid and uid = @uid limit 1;
 
 
 	-- log the ditto - Working. 
 		-- TODO2 - Handle what happens if a ditto is just returning something to its origional state.
 	/* Insert into tditto only if it isn't the person dittoing themself. */
 	if @uid != @sourceuserid then 
-		insert into tditto (`userid`, `sourceuserid`, `thingid`, `listid`, `added`, `read`)
-		values ( @uid, @sourceUserId, @thingId, @listId, CURRENT_TIMESTAMP, 0);
+		insert into tditto (`userid`, `sourceuserid`, `thingid`, `listid`, `added`, `read`, `itemDittoed`)
+		values ( @uid, @sourceUserId, @thingId, @listId, CURRENT_TIMESTAMP, 0, @tlistId);
 	end if;
 
 	-- Get the ditto key - FAILING
@@ -1033,7 +1295,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_feed`(
 )
 BEGIN
 SET @thetoken = thetoken;
-SET @thetype = thetype;
+SET @functionCallType = thetype;
 SET @userfilter = userfilter;
 SET @listfilter = listfilter;
 SET @mystate = mystate; -- This could filter the feed someday. TODO3
@@ -1041,7 +1303,8 @@ SET @continueKey = continueKey;
 SET @uid = '';
 SET @friendArray = '';
 SET @whereUser= '';
-SET @qfilter = '';
+SET @qfilter = ''; 
+SET @extraJoin = '';
 
 proc_label:BEGIN
 
@@ -1066,11 +1329,11 @@ proc_label:BEGIN
     SET @whereUser = CONCAT(' and l.uid in (',@uid,',',@friendArray,') '); -- Defaults to showing friends.
     SET @userFields = ' l.uid, un.name as username, un.fbuid as fbuid, '; -- Defaults to the private user fields.
     
-	IF @thetype = 'list' THEN
+	IF @functionCallType like 'list' THEN
 		-- select 'list' as showthis;
 		SET @qfilter = CONCAT(' and l.lid = ', @listfilter); -- Adds a list filter.
         
-	ELSEIF @thetype = 'profile' THEN 
+    ELSEIF @functionCallType like 'profile' THEN 
 		IF CHAR_LENGTH(@userfilter) = 0 THEN
 			SELECT TRUE AS error, 'Profile cannot be null for the user filter' AS errortxt;
 			
@@ -1078,16 +1341,18 @@ proc_label:BEGIN
 		END IF;
 		SET @qfilter = CONCAT(' and l.uid = ', @userfilter);
 	
-    ELSEIF @thetype = 'friends' THEN
+    ELSEIF @functionCallType = 'functionCallType' THEN
 		SET @whereUser = CONCAT(' and l.uid in (',@friendArray,') ');
     
-    ELSEIF @thetype = 'strangers' THEN
+    ELSEIF @functionCallType = 'functionCallType' THEN
 		SET @whereUser = CONCAT(' and l.uid not in (',@uid,',',@friendArray,') ');
 		SET @userFields = ' 0 as uid, "Strangers" as username, "" as fbuid, ';
             
 	ELSE 
 		SET @thisnote = 'Unknown filter';
 		SET @qfilter = '';
+        select true as `error`, @thisnote as `errortxt`;
+        LEAVE proc_label;
 	END IF;
     
     -- This is for the continuation, meaning older.
@@ -1115,7 +1380,6 @@ left outer join tlist dk on dk.id = l.dittokey
 left outer join tuser du on du.id = dk.uid
 left outer join tlist ml on ml.uid = ',@uid,' and ml.lid = l.lid and ml.tid = l.tid and ml.state = 1
 left outer join tcomments tc on tc.itemid = l.id and tc.byuserid = ',@uid,'
-
 where 
 l.state = 1 ',
 @whereUser, 
@@ -1126,7 +1390,8 @@ limit 50');
 PREPARE stmt FROM @q; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 -- 
 -- select @thetoken as thetoken, @thetype as thetype, @userfilter as userfilter, @listfilter as listfilter, @mystate as mystate, @oldestKey as oldestKey;
--- select @q;
+-- 
+select @q;
 END;
 END ;;
 DELIMITER ;
@@ -3003,7 +3268,7 @@ select
 l.id, l.uid, u.name as username, u.fbuid, l.lid, ln.name as listname, 
 l.tid, tn.name as thingname, l.added, l.dittokey
 , ml.id as mykey, dk.uid as dittouser, du.fbuid as dittofbuid, du.name as dittousername
-, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
+, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive , `l`.`uuid` 
 from tlist l 
 inner join tthing ln on l.lid = ln.id
 inner join tthing tn on l.tid = tn.id
@@ -3022,7 +3287,7 @@ select
 l.id, l.uid, "Anonymous" as username, 0 , l.lid, ln.name as listname, 
 l.tid, tn.name as thingname, 0, 0
 , ml.id as mykey, 0 as dittouser, 0 as dittofbuid, "Anonymous" as dittousername
-, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
+, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive , `l`.`uuid` 
 from tlist l 
 inner join tthing ln on l.lid = ln.id
 inner join tthing tn on l.tid = tn.id
@@ -3941,4 +4206,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-14 12:29:56
+-- Dump completed on 2015-01-15  0:07:55

@@ -14,30 +14,21 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Table structure for table `tditto`
+-- Table structure for table `temp_chatabout`
 --
 
-DROP TABLE IF EXISTS `tditto`;
+DROP TABLE IF EXISTS `temp_chatabout`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `tditto` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `userid` int(11) DEFAULT NULL,
-  `sourceuserid` int(11) DEFAULT NULL,
-  `thingid` int(11) DEFAULT NULL,
-  `listid` int(11) DEFAULT NULL,
-  `added` datetime DEFAULT NULL,
-  `read` tinyint(4) DEFAULT NULL,
-  `hidden` tinyint(1) DEFAULT '0',
-  `itemDittoed` int(15) DEFAULT NULL,
+CREATE TABLE `temp_chatabout` (
+  `id` int(4) NOT NULL AUTO_INCREMENT,
+  `noteType` tinyint(1) DEFAULT NULL,
+  `tlid` int(11) DEFAULT NULL,
+  `dateOfInterest` datetime DEFAULT NULL,
+  `read` tinyint(1) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `fromuserid_idx` (`sourceuserid`),
-  KEY `byuserid_idx` (`userid`),
-  KEY `itemDittoed_idx` (`itemDittoed`),
-  CONSTRAINT `itemDittoed` FOREIGN KEY (`itemDittoed`) REFERENCES `tlist` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `byuserid` FOREIGN KEY (`userid`) REFERENCES `tuser` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `fromuserid` FOREIGN KEY (`sourceuserid`) REFERENCES `tuser` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=1990 DEFAULT CHARSET=latin1;
+  UNIQUE KEY `tlid` (`tlid`)
+) ENGINE=InnoDB AUTO_INCREMENT=46 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
