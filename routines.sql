@@ -489,18 +489,40 @@ SET @tid = theTid;
 SET @itemUuid = theItemUuid;
 SET @newComment = newComment;
 SET @newStatus = newStatus;
--- call `v2.0_addComment`("75df7700d30cd7dfe84fa961d9c81e11","0","2503","2683", "0","0");
--- Log
-CALL `spSqlLog`(0,  
-	CONCAT('call `v2.0_addComment`("',@thetoken,'","',@targetuid,'","',@lid,'","',@tid,'", "' , @itemKey , '", "',
-        CONVERT(@newComment using utf8)
-        ,'","',
-		CONVERT(@newStatus using utf8)
-	,'")' )  , 0, 'v2.0_addComment' );
 
 -- Do the token.
 
-proc_label:BEGIN
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_addComment',
+		@thetoken, 
+        CONCAT(
+			'call `v2.0_addComment`("',
+            @thetoken,'","',
+            @targetuid,'","',
+            @lid,'","',
+            @tid,'", "' , 
+            @itemKey , '", "',
+			CONVERT(@newComment using utf8),
+			'","',
+			CONVERT(@newStatus using utf8),
+			'")' )  ,
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+        
+        );
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
 
 -- Clear existing variables.
 
@@ -519,13 +541,13 @@ if @thisuid != ceil(@thisuid) or @thisuid is null then
         ceil(@thisuid) as ceiluid, 
         @friendsarray as friendsarray
 	;
-	LEAVE proc_label;
+	LEAVE goodTimes;
 end if;
 
 -- If the comment is 0 characters, leave.
 if CHAR_LENGTH(@newComment) = 0 then
 	select true as error, "Comments cannot be null." as errorTxt;
-	LEAVE proc_label;
+	LEAVE goodTimes;
 end if;
 
 
@@ -540,7 +562,7 @@ SELECT id into @itemKey from tlist where uuid = @itemUuid limit 1;
 -- If the comment is 0 characters, leave.
 if @itemKey = 0  then
 	select true as error, "Invalid thing to comment on" as errorTxt;
-	LEAVE proc_label;
+	LEAVE goodTimes;
 end if;
 
 -- See if there is an existing comment
@@ -600,25 +622,38 @@ DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_addtolist`( thetoken VARCHAR(36), thingName TEXT, listnameid INT )
 BEGIN
 
-
 SET @thetoken = thetoken;
 
-call `spSqlLog`(0, CONCAT('call v2.0_addtolist("',@thetoken,'","',thingName,'","',listnameid,'")'), 0, 'v2.0_addtolist');
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_addtolist',
+		@thetoken, 
+        CONCAT('call v2.0_addtolist("',@thetoken,'","',thingName,'","',listnameid,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+        
+        );
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
 
-
-proc_label:BEGIN
-
-SET @uid = null;
-SET @friendsarray = null;
-
-select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
+select uid, friendsarray into @uid, @friendArray from token where token = @thetoken limit 1;
 
 
 if @uid != ceil(@uid) or @uid is null then
 	select 'Invalid token' as errortxt, true as error
-		,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
+		,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendArray as friendsarray
 	;
-	LEAVE proc_label;
+	LEAVE goodTimes;
 end if;
 
 
@@ -671,28 +706,39 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_chatAbout`(vToken VARCHAR(55), vUserFilter INT(12) )
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_chatAbout`(vToken VARCHAR(55), vUserFilter VARCHAR(255) )
 BEGIN
 
 SET @thetoken = vToken;
 SET @userFilter = vUserFilter;
 
+
 -- TODO1 - It should be ordered by newest ditto and or comment.
 
 goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_chatAbout',
+		@thetoken, 
+        CONCAT('call v2.0_chatAbout("',@thetoken,'","',@userFilter,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+        
+        );
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
 
--- Clear existing variables.
-SET @uid = null;
-SET @friendsarray = null;
-
--- Get the user from the token.
-select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
-
-if @uid != ceil(@uid) or @uid is null then
-	select 'Invalid token' as errortxt, true as `error`, 
-		@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-	;
-	LEAVE goodTimes;
+if @userFilter = '-1' or @userFilter = '0' then
+	SET @userFilter = 0;
 end if;
 
 -- Condititional where user statement
@@ -861,31 +907,128 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_checkToken`( 
+	IN sourceProc VARCHAR(45),
+	IN varToken VARCHAR(45),
+    IN queryToLog TEXT,
+    OUT tokenSuccess BOOLEAN,
+    OUT userId INT(11),
+    OUT friendArray TEXT,
+    OUT errorMessage VARCHAR(255)
+)
+BEGIN
+
+SET tokenSuccess = false;
+SET userId = 0;
+SET friendArray = '0';
+SET errorMessage = null;
+
+
+call `spSqlLog`('0', queryToLog, 0, sourceProc);
+
+goodTimes:BEGIN
+
+SET @theToken = varToken;
+
+SET @uid=0, @friendArray = '';
+
+SELECT `uid`, `friendsarray` INTO @uid, @friendArray FROM token WHERE `token` = @theToken AND `active` = 1 LIMIT 1;
+
+
+-- Hande error
+IF LENGTH(@uid) = 0  or CEIL(@uid) = 0 THEN
+	SET tokenSuccess = false;
+    SET errorMessage = 'Invalid token';
+	SELECT 'Invalid token' AS errortxt, TRUE AS error
+		,@thetoken AS thetoken, @uid AS theuid, CEIL(@uid) AS ceiluid, @friendArray AS friendsarray
+	;
+	LEAVE goodTimes;
+	
+END IF;
+
+SET tokenSuccess = true;
+
+
+-- Is the token currently valid? If so, populate some variables;
+SELECT uid, friendsarray 
+INTO userId, friendArray 
+FROM token 
+WHERE token = @theToken 
+AND active = 1 
+LIMIT 1;
+
+UPDATE token 
+SET usecount = usecount + 1 
+WHERE token = @theToken 
+AND id > 0 LIMIT 1;
+
+
+/*@tokenSuccess, @uid, @friendArray);
+
+	SELECT uid, friendsarray INTO @uid, @friendArray FROM token WHERE token = @thetoken AND active = 1 LIMIT 1;
+    
+    -- TODO1 - Update the other procedures that use this to this method, or better yet, create a function. 
+	IF LENGTH(@uid) = 0  or CEIL(@uid) = 0 THEN
+		SELECT 'Invalid token' AS errortxt, TRUE AS error
+			,@thetoken AS thetoken, @uid AS theuid, CEIL(@uid) AS ceiluid, @friendArray AS friendsarray
+		;
+		LEAVE proc_label;
+        
+	END IF;
+    
+	UPDATE token SET usecount = usecount + 1 WHERE token = @thetoken AND id > 0 LIMIT 1;
+	
+    -- select @uid as uid, @friendArray as friendArray;
+    
+    if CHAR_LENGTH(@friendArray) = 0 THEN
+		SET @friendArray = '0';
+	end if;
+*/
+
+
+end;
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_counts`(vToken VARCHAR(50) )
 BEGIN
 
-SET @theToken = vToken;
+SET @thetoken = vToken;
 
-proc_label:BEGIN
-
--- Clear existing variables.
-SET @uid = null;
-SET @friendsarray = null;
-
-
-
--- Get the user from the token.
-select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
-
-
-if @uid != ceil(@uid) or @uid is null then
-	select 'Invalid token' as errortxt, true as error
-		,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-	;
-	LEAVE proc_label;
-end if;
-
--- SET @unreadDittos, @unreadChats, @friendCount, @listCount, @thingCount;
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_counts',
+		@thetoken, 
+        CONCAT('call v2.0_counts("',@thetoken,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+        
+        );
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
 
 select count(*)  into @unreadDittos from tditto where `read` = 0 and sourceuserid = @uid;
 
@@ -894,12 +1037,19 @@ inner join tlist l on l.id = tc.itemid
 where tc.`read` = 0 and l.uid = @uid
 ;
 
-select LENGTH(friendsarray) - LENGTH(REPLACE(friendsarray,",","")) + 1 into @friendCount from token where uid = @uid and active = 1 limit 1;
+select LENGTH(@friendArray) - LENGTH(REPLACE(@friendArray,",","")) + 1 into @friendCount 
+from token where uid = @uid and active = 1 limit 1;
 
-select count(distinct(lid)) into @listCount from tlist where uid = @uid and tlist.state = 1;
-select count(*) into @thingCount from tlist where uid = @uid and tlist.state = 1;
+select count(distinct(lid)) 
+into @listCount 
+from tlist where uid = @uid and tlist.state = 1;
 
-SET @countFeedQ = CONCAT("select COUNT(*) into @feedCount from tlist where uid in ( @friendsarray ) and added  > DATE_SUB(NOW(), INTERVAL 24 HOUR)");
+select count(*) 
+into @thingCount 
+from tlist 
+where uid = @uid and tlist.state = 1;
+
+SET @countFeedQ = CONCAT("select COUNT(*) into @feedCount from tlist where uid in ( @friendArray ) and added  > DATE_SUB(NOW(), INTERVAL 24 HOUR)");
 
 prepare stmt from @countFeedQ;
 		execute stmt;
@@ -942,37 +1092,42 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_ditto`(
 )
 BEGIN
 
--- Sample: call spDitto("1","2","7779","7772","ditto","2,14,13")
-call `spSqlLog`(0, CONCAT('call v2.0_ditto("',thetoken,'","',itemKey,'" , "',theaction,'")'), 0, 'v2.0_ditto');
-
-
 SET @thetoken = thetoken;
+
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_ditto',
+		@thetoken, 
+        CONCAT('call v2.0_ditto("',thetoken,'","',itemKey,'" , "',theaction,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+        
+        );
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
+    
+
 
 -- Process the variablesSET @sourceuserid = sourceuserid;
 SET @itemKey = itemKey;
 SET @theaction = theaction;
 
-
-proc_label:BEGIN
-
--- Clear existing variables.
-SET @uid = null;
-SET @friendsarray = null;
-
-
--- Get the user from the token.
-select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
-
-
-if @uid != ceil(@uid) or @uid is null then
-	select 'Invalid token' as errortxt, true as error
-		,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-	;
-	LEAVE proc_label;
-end if;
-
 -- Get the item, user and list ids for this ditto.
-select id, uid, lid, tid into @tlistId, @sourceUserId, @listId, @thingId from tlist where uuid = @itemKey limit 1;
+select id, uid, lid, tid 
+	into @tlistId, @sourceUserId, @listId, @thingId 
+from tlist 
+where uuid = @itemKey 
+limit 1;
 
 if @theaction LIKE 'ditto' then 
 
@@ -1038,7 +1193,7 @@ if @theaction LIKE 'ditto' then
 	from tlist l
 	inner join tthing t on t.id = l.tid
 	inner join tthing ln on ln.id = l.lid
-	where l.tid = ', @thingId ,' and l.lid = ' , @listId ,' and l.uid in (',@friendsarray,')
+	where l.tid = ', @thingId ,' and l.lid = ' , @listId ,' and l.uid in (',@friendArray,')
 	group by l.tid, l.lid');
     -- select @theQ;
 
@@ -1090,6 +1245,9 @@ BEGIN
 
 SET @plittoToken = varPlittoToken;
 SET @fbLongToken = varFbLongToken;
+
+call `spSqlLog`(0, CONCAT('call `v2.0_extendFbToken`("',@plittoToken,'","',@fbLongToken,'" )'), 0, 'v2.0_extendFbToken');
+
 
 -- Check to see if the token is valid.
 
@@ -1212,7 +1370,9 @@ if @newAccount = true then
 		'update token set friendsarray = CONCAT( CONVERT(friendsarray USING utf8) , ',', CONVERT(',@puid,' using utf8) ) 
 		where active = 1 and token.`id` > 0 and token.`uid` in (',@friendids,') ');
         
-	-- Add and alert for each of these users to let them know that their friend joined. 
+	-- Add and alert for each of these users to let them know that their friend joined.
+    
+    -- TODO1 - Add this user to all of them, in their active, or latest token.
     
 end if;
 	
@@ -1284,7 +1444,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_feed`(
+CREATE DEFINER=`theuser`@`%` PROCEDURE `v2.0_feed`(
 	thetoken VARCHAR(36)
     ,  thetype VARCHAR(10)
     , userfilter VARCHAR(10)
@@ -1306,24 +1466,26 @@ SET @whereUser= '';
 SET @qfilter = ''; 
 SET @extraJoin = '';
 
-proc_label:BEGIN
-
-	SELECT uid, friendsarray INTO @uid, @friendArray FROM token WHERE token = @thetoken AND active = 1 LIMIT 1;
-    
-	IF @uid != CEIL(@uid) OR @uid IS NULL THEN
-		SELECT 'Invalid token' AS errortxt, TRUE AS error
-			,@thetoken AS thetoken, @uid AS theuid, CEIL(@uid) AS ceiluid, @friendArray AS friendsarray
-		;
-		LEAVE proc_label;
-	END IF;
-    
-	UPDATE token SET usecount = usecount + 1 WHERE token = @thetoken AND id > 0 LIMIT 1;
+goodTimes:BEGIN
 	
-    -- select @uid as uid, @friendArray as friendArray;
+	
+	SET @tokenSuccess = false;
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_feed',
+		@thetoken, 
+        concat('`call v2.0_feed`("', thetoken,'","',thetype,'","',userfilter,'","',listfilter,'","',mystate,'","',continueKey,'","',newerOrOlder , '")' ) ,
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+        
+        );
     
-    if CHAR_LENGTH(@friendArray) = 0 THEN
-		SET @friendArray = '0';
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
 	end if;
+
     
     -- Set the friends filter as part of this. Default to me and my friends.alter
     SET @whereUser = CONCAT(' and l.uid in (',@uid,',',@friendArray,') '); -- Defaults to showing friends.
@@ -1337,14 +1499,15 @@ proc_label:BEGIN
 		IF CHAR_LENGTH(@userfilter) = 0 THEN
 			SELECT TRUE AS error, 'Profile cannot be null for the user filter' AS errortxt;
 			
-			LEAVE proc_label;
+			LEAVE goodTimes;
 		END IF;
 		SET @qfilter = CONCAT(' and l.uid = ', @userfilter);
 	
-    ELSEIF @functionCallType = 'functionCallType' THEN
+    ELSEIF @functionCallType = 'friends' THEN
 		SET @whereUser = CONCAT(' and l.uid in (',@friendArray,') ');
+        -- select @friendArray as friendArray;
     
-    ELSEIF @functionCallType = 'functionCallType' THEN
+    ELSEIF @functionCallType = 'strangers' THEN
 		SET @whereUser = CONCAT(' and l.uid not in (',@uid,',',@friendArray,') ');
 		SET @userFields = ' 0 as uid, "Strangers" as username, "" as fbuid, ';
             
@@ -1352,7 +1515,7 @@ proc_label:BEGIN
 		SET @thisnote = 'Unknown filter';
 		SET @qfilter = '';
         select true as `error`, @thisnote as `errortxt`;
-        LEAVE proc_label;
+        LEAVE goodTimes;
 	END IF;
     
     -- This is for the continuation, meaning older.
@@ -1363,7 +1526,7 @@ proc_label:BEGIN
 	END IF;
     
 -- Execute the query.    
-SET @q = CONCAT(
+SET @qDo = CONCAT(
 'select 
 	l.id,
 	', @userFields ,'
@@ -1386,12 +1549,16 @@ l.state = 1 ',
 @qfilter, @oldestFilter,
 ' order by l.id desc
 limit 50');
--- 
-PREPARE stmt FROM @q; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+
+prepare stmt from @qDo;
+execute stmt;
+deallocate prepare stmt;
+
+--  
 -- 
 -- select @thetoken as thetoken, @thetype as thetype, @userfilter as userfilter, @listfilter as listfilter, @mystate as mystate, @oldestKey as oldestKey;
--- 
-select @q;
+ -- select @q;
 END;
 END ;;
 DELIMITER ;
@@ -1415,29 +1582,28 @@ BEGIN
 
 SET @thetoken = thetoken;
 
--- select @thetoken as thetokentest;
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_friends',
+		@thetoken, 
+        CONCAT('call v2.0_friends("',@thetoken,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+        
+        );
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
 
-proc_label:BEGIN
-
-
-select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
-
-
-if @uid != ceil(@uid) or @uid is null then
-	select 'Invalid token' as errortxt, true as error
-		,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-	;
-	LEAVE proc_label;
-end if;
-
--- Get the list of this user's friends, based on their token.
-
-SELECT uid, friendsarray into @uid, @friendsarray from token where token = @token and active =1;
-UPDATE token set usecount = usecount + 1 where token = @token limit 1;
--- select @uid, @friendsarray;
-
-
-call `spSqlLog`('0', CONCAT('call v2.0_friends("',@token,'")'), 0, 'v2.0_friends');
 
 -- Try to build all the results from a single query.
 SET @friendquery = CONCAT('
@@ -1469,7 +1635,7 @@ left outer join tlist ot on ot.lid = tt.lid and ot.tid = tt.tid  and ot.state = 
 -- left outer join tditto dd on tt.uid = dd.userid
 
 where 
-	u.id in (',@friendsarray,')
+	u.id in (',@friendArray,')
 	
 group by u.id
 
@@ -1523,9 +1689,30 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_GetMore`(
 )
 BEGIN
 
-call `spSqlLog`(0, CONCAT('call `v2.0_GetMore`("',thetoken,'","',forUserIDs,'","',thetype,'","',theId,'","',thenot,'")'), 0, 'v2.0_GetMore');
-
 SET @thetoken = thetoken;
+
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_GetMore',
+		@thetoken, 
+        CONCAT('call `v2.0_GetMore`("',thetoken,'","',forUserIDs,'","',thetype,'","',theId,'","',thenot,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+	);
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
+    
+    
 
 -- Create variables for this session.
 SET @thetype = thetype;
@@ -1535,31 +1722,12 @@ SET @forUserIds = forUserIDs;
 SET @theId = theId; -- The user or list id.
 
 
-proc_label:BEGIN
-
--- Clear existing variables.
-SET @uid = null;
-SET @friendsarray = null;
-
-
-
--- Get the user from the token.
-select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
-
-
-if @uid != ceil(@uid) or @uid is null then
-	select 'Invalid token' as errortxt, true as error
-		,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-	;
-	LEAVE proc_label;
-end if;
-
 -- Default to their friends if it is null 
 if char_length(@forUserIDs) > 0 then
 	SET @forUserIDs = forUserIDs; -- For the specific friend.
 else
 	-- Default to them, and their friends if it looks like that's a good idea.
-	SET @forUserIDs = CONCAT(@uid,',',@friendsarray);
+	SET @forUserIDs = CONCAT(@uid,',',@friendArray);
 end if;
 
 
@@ -1789,32 +1957,34 @@ SET @thetype = thetype;
 SET @thetoken = thetoken;
 SET @userFilter = theuserfilter;
 SET @thelistfilter = thelistfilter;
-SET @uid = NULL;
-SET @friendArray = NULL;
 SET @defaultLimit = 1;
 SET @showStrangers = TRUE; -- This is for the strangers part. Only don't show from others if the user filter is set.
 SET @sharedFilter = theSharedFilter; -- Will be 'ditto' or 'shared' or 'all'
 -- Log this query.
-CALL `spSqlLog`(0, CONCAT('call `v2.0_getSome`("',@thetype,'","',@thetoken,'","',@userFilter,'","',@thelistfilter,'", "',@sharedFilter,'")'), 0, 'v2.0_getSome');
+
 -- Create a procedure that we can bail out of.
-proc_label:BEGIN
-	SELECT uid, friendsarray INTO @uid, @friendArray FROM token WHERE token = @thetoken AND active = 1 LIMIT 1;
-	IF @uid != CEIL(@uid) OR @uid IS NULL THEN
-		SELECT 'Invalid token' AS errortxt, TRUE AS error
-			,@thetoken AS thetoken, @uid AS theuid, CEIL(@uid) AS ceiluid, @friendArray AS friendsarray
-		;
-		LEAVE proc_label;
-	END IF;
 
--- TODO1 - Do something different if this user is not in their graph.
-
--- TODO1 - If that user doesn't exist, don't proceed.
-
-	
--- Log that the token was used.
-UPDATE token SET usecount = usecount + 1 WHERE token = @thetoken AND id > 0 LIMIT 1;
-	-- If this user has more than three friends, do something different.
-	SET @friendCount = CHAR_LENGTH(@friendArray) - CHAR_LENGTH(REPLACE(@friendArray,',',''));
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_getSome',
+		@thetoken, 
+        CONCAT('call `v2.0_getSome`("',@thetype,'","',@thetoken,'","',@userFilter,'","',@thelistfilter,'", "',@sharedFilter,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+	);
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
+    
 	
 -- For someone with at least 10 friends, filter out ther things.
 IF @userFilter = 'strangers' THEN
@@ -1945,7 +2115,7 @@ if @userFilter != 'strangers' then
 	-- if we don't have a valid user, then bail.
 	IF CHAR_LENGTH(@Auid) = 0 OR CHAR_LENGTH(@Alid) = 0 THEN
 		SELECT TRUE AS error, 'no users meet your criteria' AS errortxt;
-		LEAVE proc_label;
+		LEAVE goodTimes;
 	END IF;
 	
 	-- Batch B - A list from us, that is not the same as the first list.
@@ -2334,23 +2504,27 @@ BEGIN
 
 SET @thetoken = thetoken;
 
-call `spSqlLog`(0, CONCAT('call v2.0_listOfLists("',thetoken,'","',userfilter,'","',toIgnore,'")'), 0, 'v2.0_listOfLists');
-
-
-proc_label:BEGIN
-
-	SET @uid = null;
-	SET @friendsarray = null;
-
-	select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
-
-
-	if @uid != ceil(@uid) or @uid is null then
-		select 'Invalid token' as errortxt, true as error
-			,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-		;
-		LEAVE proc_label;
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_listOfLists',
+		@thetoken, 
+        CONCAT('call v2.0_listOfLists("',thetoken,'","',userfilter,'","',toIgnore,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+	);
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
 	end if;
+    /* End Token Check Block */
+    
 
 	SET @userfilter = userfilter;
 
@@ -2453,26 +2627,30 @@ DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_listSearch`(thetoken VARCHAR(36), searchTerm TEXT)
 BEGIN
 
-call `spSqlLog`(0, CONCAT('call `v2.0_listSearch`("',thetoken,'","',searchTerm,'")'), 0, 'v2.0_listSearch');
-
 SET @thetoken = thetoken;
 SET @searchTerm = searchTerm;
 
-proc_label:BEGIN
 
-
-select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
-
-
-if @uid != ceil(@uid) or @uid is null then
-	select 'Invalid token' as errortxt, true as error
-		,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-	;
-	LEAVE proc_label;
-end if;
-
-
-
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_listSearch',
+		@thetoken, 
+        CONCAT('call `v2.0_listSearch`("',thetoken,'","',searchTerm,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+	);
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
 
 
 select a.lid, b.name as listname, count(*) as thecount 
@@ -2482,6 +2660,7 @@ inner join tthing b on b.id=  a.lid
 
 where b.name like CONCAT('%',@searchTerm ,'%')
 -- and a.userid in (1,2,3,4,5,6,7,8,9,10,13,168,19,18,17,16,15,14,13,12,11)
+-- TODO2 - Highlight items that are from user and their friends. Possibly with their profile pictures too.
 group by a.lid
 order by thecount desc
 limit 10;
@@ -2507,43 +2686,45 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_loadList`(
 			thetoken VARCHAR(36),
 			theType 	VARCHAR(10),
 			listId		INT,
-			userFilter int,
-			oldestKey INT,
+			userFilter int, -- Defaults to 0
+			oldestKey INT, -- Defaults to 0
 			sharedFilter VARCHAR(10)
     )
 BEGIN
     
     SET 
-			@thetoken = thetoken, 
-			@theType = theType, 
-			@listId = listId, 
-			@userFilter = userFilter, 
-			@oldestKey = oldestKey, 
-			@sharedFilter = sharedFilter,
-			@userCriteria = '', 
-			@oldestKeyCriteria =''
-		;
+		@thetoken = thetoken, 
+		@theType = theType, 
+		@listId = listId, 
+		@userFilter = userFilter, 
+		@oldestKey = oldestKey, 
+		@sharedFilter = sharedFilter,
+		@userCriteria = '', 
+		@oldestKeyCriteria =''
+	;
     
-    CALL `spSqlLog`(0, CONCAT('call `v2.0_loadList`("',@thetoken,'","',@thetype,'","',@listId,'")'), 0, 'v2.0_loadList');
--- Create a procedure that we can bail out of.
-proc_label:BEGIN
-	SELECT uid, friendsarray INTO @uid, @friendsarray FROM token WHERE token = @thetoken AND active = 1 LIMIT 1;
-	IF @uid != CEIL(@uid) OR @uid IS NULL THEN
-		SELECT 'Invalid token' AS errortxt, TRUE AS error
-			,@thetoken AS thetoken, @uid AS theuid, CEIL(@uid) AS ceiluid, @friendsarray AS friendsarray
-		;
-		LEAVE proc_label;
-	END IF;
-	
-	-- Build the criteria variables
-	SELECT uid, friendsarray INTO @uid, @friendsarray FROM token WHERE token = @thetoken AND active = 1 LIMIT 1;
-	
-	IF @uid != CEIL(@uid) OR @uid IS NULL THEN
-		SELECT 'Invalid token' AS errortxt, TRUE AS error
-			,@thetoken AS thetoken, @uid AS theuid, CEIL(@uid) AS ceiluid, @friendsarray AS friendsarray
-		;
-		LEAVE proc_label;
-	END IF;
+
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_loadList',
+		@thetoken, 
+        CONCAT('call `v2.0_loadList`("',@thetoken,'","',@thetype,'","',@listId,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+	);
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
+    
 	
 	-- Oldest ID Criteria - for loading items older than the oldest id
 	IF @oldestKey > 0 THEN
@@ -2554,23 +2735,23 @@ proc_label:BEGIN
 	
 -- Make the per-type criterias.	
 	if @theType = "ditto" then
-		SET @userCriteria = CONCAT(' and l.uid in (' , @friendsarray , ')');
+		SET @userCriteria = CONCAT(' and l.uid in (' , @friendArray , ')');
 	
 	elseif @theType = 'shared' then
-		SET @userCriteria = CONCAT(' and l.uid in (' , @friendsarray,')');
+		SET @userCriteria = CONCAT(' and l.uid in (' , @friendArray,')');
 	
 	ELSEIF @theType = 'mine' THEN
 		SET @userCriteria = CONCAT(' and l.uid = ' , @uid);
 	
 	ELSEIF @theType = 'feed' THEN
-		SET @userCriteria = CONCAT(' and l.uid in (', @friendsarray , ',', @uid,') ' );
+		SET @userCriteria = CONCAT(' and l.uid in (', @friendArray , ',', @uid,') ' );
 	
 	ELSEIF @theType = 'strangers' THEN
-		SET @userCriteria = CONCAT(' and l.uid not in (' , @friendsarray , ',', @uid,') ' );
+		SET @userCriteria = CONCAT(' and l.uid not in (' , @friendArray , ',', @uid,') ' );
 	
 	ELSE
 		select true as error, 'unknown request' as errortxt;
-		LEAVE proc_label;
+		LEAVE goodTimes;
 	end if ;
 -- Create a results table
 DROP TABLE IF EXISTS showsometemp;
@@ -2595,6 +2776,7 @@ CREATE TABLE showsometemp (
 );		
 		
 -- Start with Feed, which has a different query
+	
 	if @theType = 'feed' then		
 		SET @q = CONCAT('
 		select 
@@ -2631,7 +2813,7 @@ CREATE TABLE showsometemp (
 		order by l.id desc
 		limit 30');
         
-        -- select @q as thequery; -- TODO Shouldn't be active.
+        -- select @q as thequery; -- DEBUG ONLY
         prepare stmt from @q; 	execute stmt; 	deallocate prepare stmt;
 		
 		
@@ -2888,26 +3070,28 @@ BEGIN
 SET @theType = vTheType;
 SET @theKeys = vKeys;
 
-SET @theToken = vTheToken;
+SET @thetoken = vTheToken;
 
-proc_label:BEGIN
-
--- Clear existing variables.
-SET @uid = null;
-SET @friendsarray = null;
-
-
-
--- Get the user from the token.
-select uid, friendsarray into @uid, @friendsarray from token where token = @theToken limit 1;
-
-
-if @uid != ceil(@uid) or @uid is null then
-	select 'Invalid token' as errortxt, true as error
-		, @theToken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-	;
-	LEAVE proc_label;
-end if;
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_makeRead',
+		@thetoken, 
+        CONCAT('call `v2.0_makeRead`("',@thetoken,'","',@theType,'","',@theKeys,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+	);
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
 
 -- select @theKeys as theKeys;
 
@@ -2919,8 +3103,8 @@ if @theType = "ditto" then
     
     
     prepare stmt from @updateQ;
-		execute stmt;
-		deallocate prepare stmt; 
+	execute stmt;
+	deallocate prepare stmt; 
     
         
     
@@ -2928,8 +3112,8 @@ elseif @theType = "chat" then
 	-- update tcomments set `read` = 1 where id in (@theKeys);
     set @updateQ = CONCAT("update tcomments set `read` = 1 where id in (",@theKeys,")");
     prepare stmt from @updateQ;
-		execute stmt;
-		deallocate prepare stmt;
+	execute stmt;
+	deallocate prepare stmt;
     
 else
 	select true as `error`, "unknown request type" as `errorTxt`;
@@ -2962,25 +3146,27 @@ SET @thetoken = vToken;
 SET @userFilter = vUserFilter;
 
 
-proc_label:BEGIN
-
--- Clear existing variables.
-SET @uid = null;
-SET @friendsarray = null;
-
-
-
--- Get the user from the token.
-select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
-
-
-if @uid != ceil(@uid) or @uid is null then
-	select 'Invalid token' as errortxt, true as error
-		,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-	;
-	LEAVE proc_label;
-end if;
-
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_notifications',
+		@thetoken, 
+        CONCAT('call `v2.0_notifications`("',@thetoken,'","',@userFilter,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+	);
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
+    
 -- Condititional where user statement
 -- SET @userFilterView = CONCAT(" and d.userid = @uid or d.sourceuserid = @uid ");
 -- Don't show my dittos out, by default.
@@ -3132,23 +3318,30 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_search`(thetoken VARCHAR(36), 
 BEGIN
 SET @thetoken = thetoken;
 set @term = term;
-call `spSqlLog`(0, CONCAT('call `v2.0_search`("',@thetoken,'","',@term,'")'), 0, 'v2.0_search');
-proc_label:BEGIN
-	select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken and active = 1 limit 1;
-	if @uid != ceil(@uid) or @uid is null then
-		select 'Invalid token' as errortxt, true as error
-			,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-		;
-		LEAVE proc_label;
+
+
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_search',
+		@thetoken, 
+        CONCAT('call `v2.0_search`("',@thetoken,'","',@term,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+	);
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
 	end if;
-	select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken and active = 1 limit 1;
-	if @uid != ceil(@uid) or @uid is null then
-		select 'Invalid token' as errortxt, true as error
-			,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-		;
-		LEAVE proc_label;
-	end if;
-update token set usecount = usecount + 1 where token = @thetoken and id > 0 limit 1;
+    /* End Token Check Block */
+
+
 drop table if exists `temp_search`;
 CREATE TABLE `temp_search` (
 	`id` int(3) NOT NULL Auto_Increment, 
@@ -3167,7 +3360,7 @@ select "list", 1,"Lists from Us", t.id, t.name, count(*) as contain
 from tthing t
 inner join tlist l on l.lid = t.id 
 where t.name like "%',@term,'%"
-	and l.uid in (',@uid,',',@friendsarray,')
+	and l.uid in (',@uid,',',@friendArray,')
 group by t.id
 order by contain desc
 limit 10');
@@ -3181,7 +3374,7 @@ select "list", 2, "Lists from Them", t.id, t.name, count(*) as contain
 from tthing t
 inner join tlist l on l.lid = t.id 
 where t.name like "%',@term,'%"
-	and l.uid not in (',@uid,',',@friendsarray,')
+	and l.uid not in (',@uid,',',@friendArray,')
 	-- and t.id not in (select nameid from temp_search)
 group by t.id
 order by contain desc
@@ -3196,7 +3389,7 @@ select "thing", 3, "Things from Us", t.id, t.name, count(*) as contain
 from tthing t
 inner join tlist l on l.tid = t.id 
 where t.name like "%',@term,'%"
-	and l.uid in (',@uid,',',@friendsarray,')
+	and l.uid in (',@uid,',',@friendArray,')
 group by t.id
 order by contain desc
 limit 10');
@@ -3211,7 +3404,7 @@ select "thing", 4, "Things from Them", t.id, t.name, count(*) as contain
 from tthing t
 inner join tlist l on l.tid = t.id 
 where t.name like "%',@term,'%"
-	and l.uid not in (',@uid,',',@friendsarray,')
+	and l.uid not in (',@uid,',',@friendArray,')
 	and t.id not in (select nameid from temp_search )
 group by t.id
 order by contain desc
@@ -3244,23 +3437,27 @@ SET @thetoken = thetoken;
 
 SET @thingid = thethingid; 
 
-call `spSqlLog`(0, CONCAT('call v2.0_thingDetail("',@thetoken,'","',thethingid,'")'), 0, 'v2.0_thingDetail');
 
-
-proc_label:BEGIN
-
-SET @uid = null;
-SET @friendsarray = null;
-
-select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
-
-
-if @uid != ceil(@uid) or @uid is null then
-	select 'Invalid token' as errortxt, true as error
-		,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-	;
-	LEAVE proc_label;
-end if;
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_thingDetail',
+		@thetoken, 
+        CONCAT('call v2.0_thingDetail("',@thetoken,'","',thethingid,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+	);
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
 
 
 SET @q = CONCAT('
@@ -3279,7 +3476,7 @@ left outer join tuser du on du.id = dk.uid
 left outer join tcomments tc on tc.itemid = l.id and tc.byuserid = ',@uid,'
 where 
 	l.tid = ',@thingid,' and l.state = 1
-	and l.uid in (',@uid,',',@friendsarray,')
+	and l.uid in (',@uid,',',@friendArray,')
 
 union
 
@@ -3299,7 +3496,7 @@ left outer join tcomments tc on tc.itemid = l.id and tc.byuserid = ',@uid,'
 
 where 
 	l.tid = ',@thingid,' and l.state = 1
-	and l.uid not in (',@uid,',',@friendsarray,')
+	and l.uid not in (',@uid,',',@friendArray,')
 group by l.lid
 
 ')	
@@ -3329,27 +3526,30 @@ DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_thingid`(thetoken VARCHAR(36), thingname TEXT)
 BEGIN
 
-
-call `spSqlLog`(0, CONCAT('call v2.0_thingid("',thetoken,'","',thingname,'")'), 0, 'v2.0_thingid');
-
-
 SET @thetoken = thetoken;
 
 
-proc_label:BEGIN
 
-SET @uid = null;
-SET @friendsarray = null;
-
-select uid, friendsarray into @uid, @friendsarray from token where token = @thetoken limit 1;
-
-
-if @uid != ceil(@uid) or @uid is null then
-	select 'Invalid token' as errortxt, true as error
-		,@thetoken as thetoken, @uid as theuid, ceil(@uid) as ceiluid, @friendsarray as friendsarray
-	;
-	LEAVE proc_label;
-end if;
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	call `v2.0_checkToken`( 
+		'v2.0_thingid',
+		@thetoken, 
+        CONCAT('call v2.0_thingid("',@thetoken,'","',thingname,'")'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage
+	);
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
 
 
 SET @thingname = thingname;
@@ -4206,4 +4406,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-15  0:07:55
+-- Dump completed on 2015-01-16 13:15:29
