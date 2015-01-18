@@ -737,10 +737,12 @@ goodTimes:BEGIN
 	end if;
     /* End Token Check Block */
 
-if @userFilter = '-1' or @userFilter = '0' then
-	SET @userFilter = 0;
+if @userFilter = '-1' or @userFilter = '0' or @userFilter = -1 or @userFilter = 0 then
+	-- SET @userFilter = 0;
+    SET @userFilter = @friendArray;
 end if;
 
+-- select @userFilter as `test37userfilter`;
 -- Condititional where user statement
 -- SET @userFilterView = CONCAT(" and d.userid = @uid or d.sourceuserid = @uid ");
 -- Don't show my dittos out, by default.
@@ -859,6 +861,9 @@ if @userFilter != 0 then
 	deallocate prepare stmt;
 end if;    
 
+
+	-- select @qe;
+
 	SET @qe = CONCAT('
 	select 
 		tl.id, tl.uid, un.name as username, un.fbuid, tl.lid, ln.name as listname, tl.tid, tn.name as thingname, tl.added, tl.state, tl.dittokey, 
@@ -938,9 +943,15 @@ SELECT `uid`, `friendsarray` INTO @uid, @friendArray FROM token WHERE `token` = 
 -- Hande error
 IF LENGTH(@uid) = 0  or CEIL(@uid) = 0 THEN
 	SET tokenSuccess = false;
-    SET errorMessage = 'Invalid token';
-	SELECT 'Invalid token' AS errortxt, TRUE AS error
-		,@thetoken AS thetoken, @uid AS theuid, CEIL(@uid) AS ceiluid, @friendArray AS friendsarray
+    
+	SELECT 
+		'invalid_token' AS errortxt, 
+		TRUE AS error, 
+        true as logout,
+		@thetoken AS thetoken
+        -- @uid AS theuid, 
+        -- CEIL(@uid) AS ceiluid, 
+        --  @friendArray AS friendsarray
 	;
 	LEAVE goodTimes;
 	
@@ -4406,4 +4417,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-16 13:15:29
+-- Dump completed on 2015-01-18 13:46:53
