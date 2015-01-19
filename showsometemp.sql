@@ -26,7 +26,6 @@ CREATE TABLE `showsometemp` (
   `tid` int(11) DEFAULT NULL,
   `lid` int(11) DEFAULT NULL,
   `uid` int(11) DEFAULT NULL,
-  `uuid` varchar(45) DEFAULT NULL,
   `added` datetime DEFAULT NULL,
   `modified` datetime DEFAULT NULL,
   `state` int(11) DEFAULT NULL,
@@ -36,8 +35,9 @@ CREATE TABLE `showsometemp` (
   `lastshowncount` int(11) DEFAULT NULL,
   `lastshown` datetime DEFAULT NULL,
   `mykey` int(11) DEFAULT NULL,
+  `uuid` varchar(45) DEFAULT NULL,
   PRIMARY KEY (`sstid`)
-) ENGINE=InnoDB AUTO_INCREMENT=61 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -48,4 +48,4 @@ CREATE TABLE `showsometemp` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-18 13:46:53
+-- Dump completed on 2015-01-19 11:43:38
