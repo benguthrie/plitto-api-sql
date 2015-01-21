@@ -24,10 +24,10 @@ CREATE TABLE `dblog` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `userId` int(11) DEFAULT NULL,
   `query` text,
-  `time` decimal(12,5) DEFAULT NULL,
+  `time` bigint(20) DEFAULT NULL,
   `sp` varchar(45) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=15165 DEFAULT CHARSET=latin1 COMMENT='Log of Database calls.';
+) ENGINE=InnoDB AUTO_INCREMENT=17780 DEFAULT CHARSET=latin1 COMMENT='Log of Database calls.';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -38,4 +38,4 @@ CREATE TABLE `dblog` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-19 11:43:38
+-- Dump completed on 2015-01-20 19:35:38

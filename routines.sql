@@ -302,19 +302,32 @@ DELIMITER ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `adminLog`( searchString VARCHAR(255))
-BEGIN
-    
-    IF CHAR_LENGTH(searchString) > 0 THEN
-    
-			SELECT * FROM dblog 
-				WHERE `query` LIKE CONCAT('%',searchString,'%')
-			ORDER BY id DESC LIMIT 100;
-		ELSE
-			SELECT * FROM dblog 
-				WHERE `query` LIKE CONCAT('%',searchString,'%')
-			ORDER BY id DESC LIMIT 100;
-		END IF;
-
+BEGIN
+
+    
+
+    IF CHAR_LENGTH(searchString) > 0 THEN
+
+    
+
+			SELECT * FROM dblog 
+
+				WHERE `query` LIKE CONCAT('%',searchString,'%')
+
+			ORDER BY id DESC LIMIT 100;
+
+		ELSE
+
+			SELECT * FROM dblog 
+
+				WHERE `query` LIKE CONCAT('%',searchString,'%')
+
+			ORDER BY id DESC LIMIT 100;
+
+		END IF;
+
+
+
     END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -449,13 +462,46 @@ DELIMITER ;
 /*!50003 SET character_set_results = utf8 */ ;
 /*!50003 SET collation_connection  = utf8_general_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spSqlLog`(userId INT, thequery TEXT, logtime DECIMAL(12,5), sp VARCHAR(45))
+CREATE DEFINER=`root`@`localhost` PROCEDURE `spSqlLog`(
+	userId INT, 
+    thequery TEXT, 
+    sp VARCHAR(45),
+    OUT logKey INT(11) )
 BEGIN
 
 insert into dblog(`userId`,`query`,`time`,`sp`)
-VALUES (userId, thequery, logtime, sp);
+VALUES (userId, thequery, ROUND(UNIX_TIMESTAMP(CURTIME(4)) * 1000) , sp);
+
+SET logKey = LAST_INSERT_ID();
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `spSqlLog_Timing`(logKey INT(11) )
+BEGIN
+
+
+
+update dblog set `dblog`.`time` = ( ROUND(UNIX_TIMESTAMP(CURTIME(4)) * 1000) - `dblog`.`time`) 
+where `dblog`.`id` = logKey 
+limit 1;
+
+
+-- select 'spSqlLog_Timing( logkey: ' as pt1, logKey as pt2;
 
 END ;;
 DELIMITER ;
@@ -498,6 +544,8 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+    
+    SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_addComment',
 		@thetoken, 
@@ -515,7 +563,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+        @logKey
         
         );
     
@@ -575,10 +624,12 @@ if @newStatus = "1" and @newComment != "0" then
 		( @itemKey, @thisuid, @newComment, 0, CURRENT_TIMESTAMP,1) 
 	on duplicate key update `comment` = CONVERT(@newComment using utf8), `active` = 1;
     
+    /* DEBUG
     select 
 		CONCAT("INSERT into tcomments (`itemid`,`byuserid`,`comment`,`read`,`added`, `active`)
 		VALUES ( ",@itemKey,", ",@thisuid,", '",@newComment,"', 0, CURRENT_TIMESTAMP,1) on duplicate key update `comment` = CONVERT('",@newComment,"' using utf8), `active` = 1 ; 1, ? ") 
         as debug;
+	*/
     SET @newStatus = "YES! Create Comment Not Null.";
     
 elseif @newStatus = "1" then -- @newComment must be "0" 
@@ -588,9 +639,10 @@ elseif @newStatus = "1" then -- @newComment must be "0"
 	VALUES 
 		( @itemKey, @thisuid, "", 0, CURRENT_TIMESTAMP,1) 
         on duplicate key update `active` = 1;
-    
+    /* DEBUG 
     select CONCAT("INSERT into tcomments (`itemid`,`byuserid`,`comment`,`read`,`added`, `active`)
 	VALUES ( ",@itemKey,", ",@thisuid,", '",@newComment,"', 0, CURRENT_TIMESTAMP,1) on duplicate key update `comment` = '', `active` = 1; 1,0 ") as debug;
+    */ 
     SET @newStatus = "YES!";
     
 elseif @newStatus = "0" then
@@ -603,6 +655,7 @@ select true as success, @itemKey as itemKey, @targetuid as targetuid, @thisuid a
 
 
 END;
+call `spSqlLog_Timing` (@logKey );
 
 END ;;
 DELIMITER ;
@@ -630,6 +683,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+    SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_addtolist',
 		@thetoken, 
@@ -637,7 +691,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+        @logKey
         
         );
     
@@ -691,6 +746,7 @@ limit 1
 
 ;
 End; -- Ends the proclabel.
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -706,7 +762,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_chatAbout`(vToken VARCHAR(55), vUserFilter VARCHAR(255) )
+CREATE DEFINER=`theuser`@`%` PROCEDURE `v2.0_chatAbout`(vToken VARCHAR(55), vUserFilter VARCHAR(255) )
 BEGIN
 
 SET @thetoken = vToken;
@@ -721,6 +777,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+    SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_chatAbout',
 		@thetoken, 
@@ -728,7 +785,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+        @logKey
         
         );
     
@@ -766,7 +824,7 @@ END IF;
 
 -- Temp Table for this.
 DROP TABLE IF EXISTS `temp_chatAbout`;
-CREATE TABLE `temp_chatAbout` (
+CREATE TEMPORARY TABLE `temp_chatAbout` (
 	`id` int(4) NOT NULL AUTO_INCREMENT,
     `noteType` TINYINT(1),
     `tlid` INT(11),
@@ -866,9 +924,21 @@ end if;
 
 	SET @qe = CONCAT('
 	select 
-		tl.id, tl.uid, un.name as username, un.fbuid, tl.lid, ln.name as listname, tl.tid, tn.name as thingname, tl.added, tl.state, tl.dittokey, 
+		tl.id, 
+        tl.uid, 
+        un.name as username, 
+        un.fbuid, tl.lid, ln.name as listname, tl.tid, 
+        tn.name as thingname, 
+        tl.added, 
+        tl.state, tl.dittokey, 
 		tca.noteType as groupid, 
-        td.userid as dittouser, tdu.name as dittousername, tdu.fbuid as dittofbuid, 0 as mykey, tc.comment as commentText, tc.read as commentRead, tc.active as commentActive,
+        td.userid as dittouser, 
+        tdu.name as dittousername, 
+        tdu.fbuid as dittofbuid, 
+        ml.id as mykey, 
+        tc.comment as commentText, 
+        tc.read as commentRead, 
+        tc.active as commentActive,
         cu.id as commentuserid, cu.name as commentusername, cu.fbuid as commentfbuid, tl.uuid
 
 
@@ -877,18 +947,23 @@ end if;
 		-- tca.tlid, tca.dateofinterest, tca.read,
 		-- tl.added, tca.tlid, tl.dittokey, tdu.fbuid, tdu.username as dittousername, tn.name as thingname
 		-- *
-	from temp_ChatAbout tca 
-	inner join tlist tl on tl.id = tca.tlid
-	left outer join tditto td on tl.dittokey = td.id and tl.dittokey !=0 
-	left outer join tuser tdu on td.sourceuserid = tdu.id
+	from `temp_chatAbout` tca ', /* Main table. The Chat */
+	' inner join tlist tl on tl.id = tca.tlid ', /*  */
+	' left outer join tditto td on tl.dittokey = td.id and tl.dittokey !=0  ',
+	' left outer join tuser tdu on td.sourceuserid = tdu.id ', /* User information so I know who they are */
     
-	inner join tthing tn on tn.id = tl.tid 
-	inner join tthing ln on ln.id = tl.lid
-	inner join tuser un on un.id = tl.uid
-	left outer join tcomments tc on tc.itemid = tl.id and (tc.byuserid = ',@uid,' and tl.uid in (',@userFilter,') ) or (tc.byuserid in (',@userFilter,') and tl.uid = ',@uid,')
-    left outer join tuser cu on cu.id = tc.byuserid 
-    order by tca.id desc
+	' inner join tthing tn on tn.id = tl.tid ', /* Bring in the thing name */
+	' inner join tthing ln on ln.id = tl.lid ', /* Bring in the list name */
+	' inner join tuser un on un.id = tl.uid ', /* their user information? */
+    ' left outer join tlist ml on ml.uid = ', @uid,' and tl.tid = ml.tid and tl.lid = ml.lid and ml.state = 1', 
+	' left outer join tcomments tc 
+		on 
+			tc.itemid = tl.id and (tc.byuserid = ',@uid,' and tl.uid in (',@userFilter,') ) ',
+            ' or (tc.byuserid in (',@userFilter,') and tl.uid = ',@uid,') ',
+    ' left outer join tuser cu on cu.id = tc.byuserid  ', /* Comment user information?  */
+    ' order by tca.id desc
 	');
+    
     prepare stmt from @qe;
 	execute stmt;
 	deallocate prepare stmt;
@@ -896,6 +971,8 @@ end if;
 
 
 END;
+
+call `spSqlLog_Timing` (@logKey );
 
 END ;;
 DELIMITER ;
@@ -919,9 +996,12 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_checkToken`(
     OUT tokenSuccess BOOLEAN,
     OUT userId INT(11),
     OUT friendArray TEXT,
-    OUT errorMessage VARCHAR(255)
+    OUT errorMessage VARCHAR(255),
+    OUT logKey INT(11)
 )
 BEGIN
+
+-- select queryToLog as qtlDEBUG;
 
 SET tokenSuccess = false;
 SET userId = 0;
@@ -929,7 +1009,9 @@ SET friendArray = '0';
 SET errorMessage = null;
 
 
-call `spSqlLog`('0', queryToLog, 0, sourceProc);
+
+SET @logKey = null;
+
 
 goodTimes:BEGIN
 
@@ -938,6 +1020,8 @@ SET @theToken = varToken;
 SET @uid=0, @friendArray = '';
 
 SELECT `uid`, `friendsarray` INTO @uid, @friendArray FROM token WHERE `token` = @theToken AND `active` = 1 LIMIT 1;
+
+call `spSqlLog`(@uid, queryToLog, sourceProc, logKey );
 
 
 -- Hande error
@@ -974,27 +1058,7 @@ WHERE token = @theToken
 AND id > 0 LIMIT 1;
 
 
-/*@tokenSuccess, @uid, @friendArray);
 
-	SELECT uid, friendsarray INTO @uid, @friendArray FROM token WHERE token = @thetoken AND active = 1 LIMIT 1;
-    
-    -- TODO1 - Update the other procedures that use this to this method, or better yet, create a function. 
-	IF LENGTH(@uid) = 0  or CEIL(@uid) = 0 THEN
-		SELECT 'Invalid token' AS errortxt, TRUE AS error
-			,@thetoken AS thetoken, @uid AS theuid, CEIL(@uid) AS ceiluid, @friendArray AS friendsarray
-		;
-		LEAVE proc_label;
-        
-	END IF;
-    
-	UPDATE token SET usecount = usecount + 1 WHERE token = @thetoken AND id > 0 LIMIT 1;
-	
-    -- select @uid as uid, @friendArray as friendArray;
-    
-    if CHAR_LENGTH(@friendArray) = 0 THEN
-		SET @friendArray = '0';
-	end if;
-*/
 
 
 end;
@@ -1025,6 +1089,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_counts',
 		@thetoken, 
@@ -1032,7 +1097,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
         
         );
     
@@ -1080,7 +1146,7 @@ SELECT
 
 END;
 
-
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -1111,6 +1177,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_ditto',
 		@thetoken, 
@@ -1118,8 +1185,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
-        
+        @errorMessage,
+        @logKey
         );
     
     if @tokenSuccess = false then
@@ -1235,7 +1302,7 @@ end if;
 
 END;
 
-
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -1310,7 +1377,12 @@ BEGIN
 		Token masks: user id, start time, usage count, and list of friends.
 		All session handling moves into the token arena. All other stored procs should use the token as a way to handle this.
 */
-call `spSqlLog`(0, CONCAT('call `v2.0_fbLogin`("',fbuid,'","',fbname,'","',fbemail,'","',fbfriendsarray,'")'), 0, 'v2.0_fbLogin');
+-- call `spSqlLog`(0, CONCAT('call `v2.0_fbLogin`("',fbuid,'","',fbname,'","',fbemail,'","',fbfriendsarray,'")'), 0, 'v2.0_fbLogin');
+SET @logKey = null;
+call `spSqlLog`(
+	0,
+	CONCAT('call `v2.0_fbLogin`("',fbuid,'","',fbname,'","',fbemail,'","',fbfriendsarray,'")'),
+    'v2.0_fbLogin', @logKey );
 
 SET @fbuid = fbuid;
 SET @fbname = fbname;
@@ -1388,47 +1460,55 @@ if @newAccount = true then
 end if;
 	
 -- Get the old fbToken: 
-SELECT `fbToken`, `id`  into @oldFbToken, @oldTokenId from token where uid = @puid and active = 1 limit 1;
+SELECT `fbToken`, `id`  into @oldFbToken, @oldTokenId 
+from `token`
+where `token`.`uid` = @puid and `token`.`active` = 1 
+limit 1;
 
 
 -- Update the token if there is a new facebook token. Check for the existing one.
 if @oldFbToken != @newFbToken and LENGTH(@oldFbToken) > 0 then
 -- select @oldFbToken as oldFbToken, @fbToken as newFbToken, @puid as puid;
-	-- Deactivate the old token
-    update token set active = 0, `end` = CURRENT_TIMESTAMP where id = @oldTokenId ;
+	
+    -- Let them login on another device. 1/19/2015
+    set @newPlittoToken = @oldTokenId;
     
-    -- Create a new one.
-    SET @newPlittoToken = MD5(CONCAT('!%!connect!%!',UUID()));
-    insert into token (`token`, `uid`,`start`,`active`,`usecount`,`friendsarray`,`logincount`,`fbToken`, `lastUsed`) 
-    VALUES (@newPlittoToken, @puid, CURRENT_TIMESTAMP, 1, 1, @friendids, 1, @newFbToken, CURRENT_TIMESTAMP );
-    
+	/*
+		-- Deactivate the old token
+		update token set active = 0, `end` = CURRENT_TIMESTAMP where id = @oldTokenId ;
+		
+		-- Create a new one.
+		SET @newPlittoToken = MD5(CONCAT('!%!connect!%!',UUID()));
+		insert into token (`token`, `uid`,`start`,`active`,`usecount`,`friendsarray`,`logincount`,`fbToken`, `lastUsed`) 
+		VALUES (@newPlittoToken, @puid, CURRENT_TIMESTAMP, 1, 1, @friendids, 1, @newFbToken, CURRENT_TIMESTAMP );
+    */
 end if;
 
 -- STEP - If the puid exists, then the user is logged in.
 if ceil(@puid) = @puid then
 	-- SELECT 'matching puids' AS debugMessage, @puid as theuid;
 	-- update token set `end` = CURRENT_TIMESTAMP, active = 0 where uid = @puid and active = 1 limit 1;
-    
-    -- Initialize the Plitto Token
+
+	-- Initialize the Plitto Token
 	SET @plittoToken = '';
 	-- See if this user has a valid token already.
 	SELECT token, fbtoken into @plittoToken, @oldFbToken from token where uid = @puid and active = 1 limit 1;
-    
-	
+
+
 	if CHAR_LENGTH(@plittoToken) = 0 then
 		
-	
+
 		-- Create a token
 		SET @plittoToken = MD5(CONCAT('!%!connect!%!',UUID()));
 		insert into token (`token`,`uid`,`start`,`active`,`usecount`,`friendsarray`,`fbToken`, `lastUsed`) 
-        VALUES ( @plittoToken, @puid, CURRENT_TIMESTAMP, 1, 1, @friendids, @newFbToken, CURRENT_TIMESTAMP );
+		VALUES ( @plittoToken, @puid, CURRENT_TIMESTAMP, 1, 1, @friendids, @newFbToken, CURRENT_TIMESTAMP );
 	else 
 		-- Update their friends.
-        update token 
+		update token 
 			set `friendsarray` = @friendids, `usecount` = `usecount` + 1, `lastUsed` = CURRENT_TIMESTAMP 
 			where `token` = @plittoToken  
-            order by id limit 1;
-    
+			order by id limit 1;
+
 	END IF;
     
     
@@ -1440,6 +1520,7 @@ select @puid as puid, @username as username, @fbuid as fbuid, @plittoToken as to
 /*
 */
 -- 
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -1482,6 +1563,7 @@ goodTimes:BEGIN
 	
 	SET @tokenSuccess = false;
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_feed',
 		@thetoken, 
@@ -1489,7 +1571,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
         
         );
     
@@ -1571,6 +1654,7 @@ deallocate prepare stmt;
 -- select @thetoken as thetoken, @thetype as thetype, @userfilter as userfilter, @listfilter as listfilter, @mystate as mystate, @oldestKey as oldestKey;
  -- select @q;
 END;
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -1599,6 +1683,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_friends',
 		@thetoken, 
@@ -1606,7 +1691,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
         
         );
     
@@ -1673,6 +1759,7 @@ prepare stmt from @friendquery;
 
 end;
 
+call `spSqlLog_Timing` (@logKey );
 
 END ;;
 DELIMITER ;
@@ -1708,6 +1795,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_GetMore',
 		@thetoken, 
@@ -1715,7 +1803,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
 	);
     
     if @tokenSuccess = false then
@@ -1940,7 +2029,7 @@ left outer join tcomments tc on tc.itemid = s.id and tc.byuserid = @uid
 
 
 END;
-
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -1981,6 +2070,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_getSome',
 		@thetoken, 
@@ -1988,7 +2078,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
 	);
     
     if @tokenSuccess = false then
@@ -2495,6 +2586,7 @@ SELECT * FROM showsometemp;
 */
 -- End the proc
 END;
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -2521,6 +2613,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_listOfLists',
 		@thetoken, 
@@ -2528,7 +2621,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
 	);
     
     if @tokenSuccess = false then
@@ -2620,6 +2714,7 @@ goodTimes:BEGIN
 	SET @q = null;
 
 END;
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -2648,6 +2743,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_listSearch',
 		@thetoken, 
@@ -2655,7 +2751,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
 	);
     
     if @tokenSuccess = false then
@@ -2677,7 +2774,7 @@ order by thecount desc
 limit 10;
 
 end;
-
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -2721,14 +2818,23 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_loadList',
 		@thetoken, 
-        CONCAT('call `v2.0_loadList`("',@thetoken,'","',@thetype,'","',@listId,'")'),
+        CONCAT('call `v2.0_loadList`("',
+			@thetoken,'","',
+            @thetype,'","',
+            @listId,'","',
+            @sharedFilter,'","',
+			@oldestKey,'","',
+            @sharedFilter ,
+		'")'),
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
 	);
     
     if @tokenSuccess = false then
@@ -3059,6 +3165,7 @@ LEFT OUTER JOIN tuser du ON du.id = dk.uid
 */
 	
 end;
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -3089,6 +3196,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_makeRead',
 		@thetoken, 
@@ -3096,7 +3204,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
 	);
     
     if @tokenSuccess = false then
@@ -3108,7 +3217,7 @@ goodTimes:BEGIN
 
 if @theType = "ditto" then 
 	-- 
-    set @updateQ = CONCAT("update tditto set `read` = 1 where id in (",@theKeys,")");
+    set @updateQ = CONCAT('update tditto set `read` = 1 where id in (',@theKeys,')');
     /*
     select @updateQ as x;*/
     
@@ -3121,20 +3230,20 @@ if @theType = "ditto" then
     
 elseif @theType = "chat" then
 	-- update tcomments set `read` = 1 where id in (@theKeys);
-    set @updateQ = CONCAT("update tcomments set `read` = 1 where id in (",@theKeys,")");
+    set @updateQ = CONCAT('update tcomments set `read` = 1 where id in (',@theKeys,')');
     prepare stmt from @updateQ;
 	execute stmt;
 	deallocate prepare stmt;
     
 else
-	select true as `error`, "unknown request type" as `errorTxt`;
+	select true as `error`, 'unknown request type' as `errorTxt`;
 end if;
 
 
-select "updated keys" as theResult;
+select 'updated keys' as theResult;
 
 END;
-
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -3163,6 +3272,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_notifications',
 		@thetoken, 
@@ -3170,7 +3280,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
 	);
     
     if @tokenSuccess = false then
@@ -3309,7 +3420,7 @@ order by added desc
 prepare stmt from @theQuery;execute stmt;deallocate prepare stmt; 
 
 END;
-
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -3337,6 +3448,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_search',
 		@thetoken, 
@@ -3344,7 +3456,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
 	);
     
     if @tokenSuccess = false then
@@ -3425,6 +3538,7 @@ execute stmt;
 deallocate prepare stmt; 
 select * from temp_search;
 END;
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -3455,6 +3569,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_thingDetail',
 		@thetoken, 
@@ -3462,7 +3577,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
 	);
     
     if @tokenSuccess = false then
@@ -3519,6 +3635,7 @@ group by l.lid
 
 select @q as q;
 End;
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -3547,6 +3664,7 @@ goodTimes:BEGIN
 	SET @tokenSuccess = false;
     SET @friendArray = '';
 	SET @errorMessage = '';
+	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_thingid',
 		@thetoken, 
@@ -3554,7 +3672,8 @@ goodTimes:BEGIN
         @tokenSuccess, 
         @uid, 
         @friendArray, 
-        @errorMessage
+        @errorMessage,
+		@logKey
 	);
     
     if @tokenSuccess = false then
@@ -3571,6 +3690,7 @@ select @thingid as thingid;
 
 
 END;
+call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -4417,4 +4537,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-19 11:43:38
+-- Dump completed on 2015-01-20 19:35:38

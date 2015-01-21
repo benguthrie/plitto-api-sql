@@ -36,7 +36,7 @@ CREATE TABLE `token` (
   UNIQUE KEY `token_UNIQUE` (`token`),
   KEY `uidtoken_idx` (`uid`),
   CONSTRAINT `uidtoken` FOREIGN KEY (`uid`) REFERENCES `tuser` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=915 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=916 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -47,4 +47,4 @@ CREATE TABLE `token` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-19 11:43:38
+-- Dump completed on 2015-01-20 19:35:38
