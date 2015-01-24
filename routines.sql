@@ -22,7 +22,7 @@
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` FUNCTION `duser`() RETURNS int(11)
+CREATE FUNCTION `duser`() RETURNS int(11)
 BEGIN
 
 RETURN 2;
@@ -41,7 +41,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` FUNCTION `dusers`() RETURNS char(255) CHARSET latin1
+CREATE FUNCTION `dusers`() RETURNS char(255) CHARSET latin1
 BEGIN
 
 RETURN '18,25,14,156,64,132,13,69,724,723,161,168,719';
@@ -60,7 +60,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` FUNCTION `fThingId`(newthingName TEXT) RETURNS int(11)
+CREATE FUNCTION `fThingId`(newthingName TEXT) RETURNS int(11)
 BEGIN
 
 SET @newthingName = newthingName;
@@ -99,7 +99,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `adminAddItemKeyToTDitto`()
+CREATE PROCEDURE `adminAddItemKeyToTDitto`()
 BEGIN
 
 /*
@@ -168,7 +168,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `adminAddUuidToTlist`()
+CREATE PROCEDURE `adminAddUuidToTlist`()
 BEGIN
 
 /*
@@ -203,7 +203,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = '' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `adminDeleteUser`()
+CREATE PROCEDURE `adminDeleteUser`()
 BEGIN
 
 
@@ -238,7 +238,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `adminImportDittos`()
+CREATE PROCEDURE `adminImportDittos`()
 BEGIN
 
 
@@ -301,7 +301,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `adminLog`( searchString VARCHAR(255))
+CREATE PROCEDURE `adminLog`( searchString VARCHAR(255))
 BEGIN
 
     
@@ -343,7 +343,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `adminStressTest`()
+CREATE PROCEDURE `adminStressTest`()
 BEGIN
 
 SET @i = 0;
@@ -377,7 +377,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `log`(title VARCHAR(255), log TEXT)
+CREATE PROCEDURE `log`(title VARCHAR(255), log TEXT)
 BEGIN
 
 insert into log(`title`,`log`) VALUES (title,log);
@@ -397,7 +397,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = '' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `migrate`()
+CREATE PROCEDURE `migrate`()
 BEGIN
 
 -- prepare 
@@ -464,15 +464,16 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spSqlLog`(
+CREATE PROCEDURE `spSqlLog`(
 	userId INT, 
     thequery TEXT, 
     sp VARCHAR(45),
     OUT logKey INT(11) )
 BEGIN
 
-insert into dblog(`userId`,`query`,`time`,`sp`)
-VALUES (userId, thequery, ROUND(UNIX_TIMESTAMP(CURTIME(4)) * 1000) , sp);
+insert into dblog(`userId`,`query`,`time`,`sp`,`added`)
+-- dreamhost mysql5.0 can't handle this. VALUES (userId, thequery, ROUND(UNIX_TIMESTAMP(CURTIME(4)) * 1000) , sp, CURRENT_TIMESTAMP);
+VALUES (userId, thequery, UNIX_TIMESTAMP() , sp, CURRENT_TIMESTAMP);
 
 SET logKey = LAST_INSERT_ID();
 
@@ -491,12 +492,11 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `spSqlLog_Timing`(logKey INT(11) )
+CREATE PROCEDURE `spSqlLog_Timing`(logKey INT(11) )
 BEGIN
 
 
-
-update dblog set `dblog`.`time` = ( ROUND(UNIX_TIMESTAMP(CURTIME(4)) * 1000) - `dblog`.`time`) 
+update dblog set `dblog`.`time` = (UNIX_TIMESTAMP - `dblog`.`time`) 
 where `dblog`.`id` = logKey 
 limit 1;
 
@@ -518,7 +518,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_addComment`( 
+CREATE PROCEDURE `v2.0_addComment`( 
 	token VARCHAR(59), 
     targetuid INT(12), 
     lid INT(13), 
@@ -672,7 +672,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_addtolist`( thetoken VARCHAR(36), thingName TEXT, listnameid INT )
+CREATE PROCEDURE `v2.0_addtolist`( thetoken VARCHAR(36), thingName TEXT, listnameid INT )
 BEGIN
 
 SET @thetoken = thetoken;
@@ -989,7 +989,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_checkToken`( 
+CREATE PROCEDURE `v2.0_checkToken`( 
 	IN sourceProc VARCHAR(45),
 	IN varToken VARCHAR(45),
     IN queryToLog TEXT,
@@ -1078,7 +1078,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_counts`(vToken VARCHAR(50) )
+CREATE PROCEDURE `v2.0_counts`(vToken VARCHAR(50) )
 BEGIN
 
 SET @thetoken = vToken;
@@ -1162,7 +1162,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_ditto`(
+CREATE PROCEDURE `v2.0_ditto`(
 	thetoken VARCHAR(36), 
 	itemKey VARCHAR(45), 
 	theaction VARCHAR(20) 
@@ -1318,7 +1318,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_extendFbToken`( varPlittoToken VARCHAR(45), varFbLongToken VARCHAR(255) )
+CREATE PROCEDURE `v2.0_extendFbToken`( varPlittoToken VARCHAR(45), varFbLongToken VARCHAR(255) )
 BEGIN
 
 SET @plittoToken = varPlittoToken;
@@ -1369,7 +1369,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_fbLogin`(
+CREATE PROCEDURE `v2.0_fbLogin`(
 	fbuid BIGINT, fbname VARCHAR(255), fbemail VARCHAR(255) , fbfriendsarray TEXT, newFbToken VARCHAR(255) )
 BEGIN
 /*
@@ -1516,7 +1516,13 @@ if ceil(@puid) = @puid then
     
 	
 end if;
-select @puid as puid, @username as username, @fbuid as fbuid, @plittoToken as token, @friendids as friendids; 
+select 
+	@puid as puid, 
+    @username as username, 
+    @fbuid as fbuid, 
+    @plittoToken as token
+    /* , @friendids as friendids */
+    ; 
 /*
 */
 -- 
@@ -1557,6 +1563,7 @@ SET @friendArray = '';
 SET @whereUser= '';
 SET @qfilter = ''; 
 SET @extraJoin = '';
+SET @theType = thetype; /* This isn't used, for some reason */
 
 goodTimes:BEGIN
 	
@@ -1670,7 +1677,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_friends`(
+CREATE PROCEDURE `v2.0_friends`(
 	thetoken VARCHAR(36)
 )
 BEGIN
@@ -1776,7 +1783,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_GetMore`(
+CREATE PROCEDURE `v2.0_GetMore`(
 	thetoken VARCHAR(36),
 	
 	forUserIDs TEXT ,
@@ -2045,7 +2052,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_getSome`(
+CREATE PROCEDURE `v2.0_getSome`(
 	thetype VARCHAR(10)	-- List or User or Null
 	, thetoken VARCHAR(36)	
 	, theuserfilter TEXT
@@ -2602,7 +2609,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_listOfLists`(thetoken VARCHAR(36), userfilter TEXT, toIgnore TEXT)
+CREATE PROCEDURE `v2.0_listOfLists`(thetoken VARCHAR(36), userfilter TEXT, toIgnore TEXT)
 BEGIN
 
 SET @thetoken = thetoken;
@@ -2730,7 +2737,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_listSearch`(thetoken VARCHAR(36), searchTerm TEXT)
+CREATE PROCEDURE `v2.0_listSearch`(thetoken VARCHAR(36), searchTerm TEXT)
 BEGIN
 
 SET @thetoken = thetoken;
@@ -2790,7 +2797,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_loadList`(
+CREATE PROCEDURE `v2.0_loadList`(
 			thetoken VARCHAR(36),
 			theType 	VARCHAR(10),
 			listId		INT,
@@ -2826,7 +2833,7 @@ goodTimes:BEGIN
 			@thetoken,'","',
             @thetype,'","',
             @listId,'","',
-            @sharedFilter,'","',
+            @userFilter,'","',
 			@oldestKey,'","',
             @sharedFilter ,
 		'")'),
@@ -2842,6 +2849,7 @@ goodTimes:BEGIN
 	end if;
     /* End Token Check Block */
     
+    SET @goodLimit = 15;
 	
 	-- Oldest ID Criteria - for loading items older than the oldest id
 	IF @oldestKey > 0 THEN
@@ -2928,7 +2936,7 @@ CREATE TABLE showsometemp (
 			l.state = 1 ',@userCriteria,' ',@oldestKeyCriteria,'
 			and l.lid =',@listId,'
 		order by l.id desc
-		limit 30');
+		limit ', @goodLimit );
         
         -- select @q as thequery; -- DEBUG ONLY
         prepare stmt from @q; 	execute stmt; 	deallocate prepare stmt;
@@ -2968,7 +2976,7 @@ CREATE TABLE showsometemp (
 			l.state = 1 ',@userCriteria,' ',@oldestKeyCriteria,'
 			and l.lid =',@listId,'
 		order by l.id desc
-		limit 30');
+		limit ', @goodLimit );
 		PREPARE stmt FROM @q; 	EXECUTE stmt; 	DEALLOCATE PREPARE stmt;
 		-- select @q as thequery;
 		
@@ -2985,7 +2993,7 @@ CREATE TABLE showsometemp (
 			and l.lid =',@listId,'
 			and m.id is null
 		order by pt.lastdate asc 
-		limit 30');
+		limit ', @goodLimit );
 		PREPARE stmt FROM @q; 	EXECUTE stmt; 	DEALLOCATE PREPARE stmt;
 		
 		-- Join the items and return them.
@@ -3047,7 +3055,7 @@ ELSEIF @theType = 'shared' THEN
 			and l.lid =',@listId,'
 			and m.id is not null
 		order by pt.lastdate asc 
-		limit 30');
+		limit ', @goodLimit );
 		PREPARE stmt FROM @q; 	EXECUTE stmt; 	DEALLOCATE PREPARE stmt;
 		
 		-- Join the items and return them.
@@ -3146,23 +3154,7 @@ ELSEIF @theType = 'strangers' THEN
 	ELSE
 		select 'something' as pending;
 	end if;
-				
-			
-	/*
-	
-	SELECT 
-s.id, s.uid, un.name AS username, un.fbuid,  s.lid, lna.name AS listname, s.tid
-, tn.name AS thingname,   s.added, s.state, s.dittokey AS dittokey, s.dittoable , s.groupid
-, dk.uid AS dittouser, du.name AS dittousername, du.fbuid AS dittofbuid, lastshowncount, lastshown
-, mykey AS mykey
-FROM showsometemp s
-INNER JOIN tthing tn ON tn.id = s.tid
-INNER JOIN tuser un ON un.id = s.uid
-INNER JOIN tthing lna ON lna.id = s.lid
-LEFT OUTER JOIN tlist dk ON dk.id = s.dittokey 
-LEFT OUTER JOIN tuser du ON du.id = dk.uid
-;
-*/
+		
 	
 end;
 call `spSqlLog_Timing` (@logKey );
@@ -3181,7 +3173,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_makeRead`(vTheToken VARCHAR(50), vTheType VARCHAR(50), vKeys TEXT)
+CREATE PROCEDURE `v2.0_makeRead`(vTheToken VARCHAR(50), vTheType VARCHAR(50), vKeys TEXT)
 BEGIN
 -- call `v2.0_makeRead` ('ditto','1831, 1830, 1829, 1675, 1674, 1673, 1672, 1671, 1625, 1591, 1590, 1589, 1588, 1580, 1579, 1576, 1572, 1571, 1567, 1558, 1557, 1556, 1555, 1554, 1551, 1550, 1549, 1534, 1533, 1532');
 
@@ -3259,7 +3251,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_notifications`(vToken VARCHAR(55), vUserFilter INT(12) )
+CREATE PROCEDURE `v2.0_notifications`(vToken VARCHAR(55), vUserFilter INT(12) )
 BEGIN
 
 SET @thetoken = vToken;
@@ -3436,7 +3428,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_search`(thetoken VARCHAR(36), term VARCHAR(255))
+CREATE PROCEDURE `v2.0_search`(thetoken VARCHAR(36), term VARCHAR(255))
 BEGIN
 SET @thetoken = thetoken;
 set @term = term;
@@ -3554,7 +3546,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_thingDetail`(thetoken VARCHAR(36), thethingid INT)
+CREATE PROCEDURE `v2.0_thingDetail`(thetoken VARCHAR(36), thethingid INT)
 BEGIN
 
 
@@ -3633,7 +3625,7 @@ group by l.lid
 	execute stmt;
 	deallocate prepare stmt;
 
-select @q as q;
+-- select @q as q;
 End;
 call `spSqlLog_Timing` (@logKey );
 END ;;
@@ -3651,7 +3643,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_thingid`(thetoken VARCHAR(36), thingname TEXT)
+CREATE PROCEDURE `v2.0_thingid`(thetoken VARCHAR(36), thingname TEXT)
 BEGIN
 
 SET @thetoken = thetoken;
@@ -3706,7 +3698,29 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_tokenCheck`( vtoken VARCHAR(36))
+CREATE PROCEDURE `v2.0_thingName`( thetoken VARCHAR(46), thingId INT(11))
+BEGIN
+
+SET @thingId = thingId;
+select `name` as `thingName` from tthing where id = @thingId limit 1;
+
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE PROCEDURE `v2.0_tokenCheck`( vtoken VARCHAR(36))
 BEGIN
 
 SET @token = vtoken;
@@ -3739,7 +3753,56 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spAddToList`(thingName TEXT, listnameid INT, userid INT )
+CREATE PROCEDURE `v2.0_userInfo`(thetoken VARCHAR(46), thisUserId INT(15) )
+BEGIN
+
+
+SET @thetoken = thetoken;
+SET @thisUserId = thisUserId;
+
+goodTimes:BEGIN
+	/* Begin Token Check Block */
+	SET @uid = '';
+	SET @tokenSuccess = false;
+    SET @friendArray = '';
+	SET @errorMessage = '';
+	SET @logKey = null;
+	call `v2.0_checkToken`( 
+		'v2.0_userInfo',
+		@thetoken, 
+        CONCAT('call v2.0_userInfo("',thetoken,'" )'),
+        @tokenSuccess, 
+        @uid, 
+        @friendArray, 
+        @errorMessage,
+        @logKey
+        );
+    
+    if @tokenSuccess = false then
+		LEAVE goodTimes;
+	end if;
+    /* End Token Check Block */
+    
+    select `id` as `userId`, `name` as `userName`, `fbuid` from tuser where id = @thisUserId limit 1;
+    
+    
+END;    
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE PROCEDURE `ZDELETE_spAddToList`(thingName TEXT, listnameid INT, userid INT )
 BEGIN
 -- addToList("'.$_POST['thingName'].'","'.$_POST['listnameid'].'","'.$_POST['userid'].'","'.$_POST['userfb'].'");'accessible
 
@@ -3795,7 +3858,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spDitto`(userid INT, sourceuserid INT, thingid INT, 
+CREATE PROCEDURE `ZDELETE_spDitto`(userid INT, sourceuserid INT, thingid INT, 
 	listid INT, theaction VARCHAR(20) , myFriends TEXT)
 BEGIN
 
@@ -3901,7 +3964,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spDittosUser`(userId int, aboutUserIds TEXT)
+CREATE PROCEDURE `ZDELETE_spDittosUser`(userId int, aboutUserIds TEXT)
 BEGIN
 
 call `spSqlLog`(userid, CONCAT('call spDittosUser("',userId,'","',aboutUserIds,'"'), 0, 'spDittosUser');
@@ -3955,7 +4018,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spFriendsFB`(
+CREATE PROCEDURE `ZDELETE_spFriendsFB`(
 	userId INT, 
 	forUserIDs TEXT
 )
@@ -4045,7 +4108,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spGetActivity`(userid INT, users TEXT, lastDate DATETIME)
+CREATE PROCEDURE `ZDELETE_spGetActivity`(userid INT, users TEXT, lastDate DATETIME)
 BEGIN
 -- call getActivity(for users ,last activity date)
 -- call getActivity('2,13,14,1','')
@@ -4168,7 +4231,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spLists`(
+CREATE PROCEDURE `ZDELETE_spLists`(
 	userId INT, 
 	forUserIDs TEXT, 
 	forLists TEXT ,
@@ -4301,7 +4364,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spListsB`(
+CREATE PROCEDURE `ZDELETE_spListsB`(
 	userId INT, 
 	forUserIDs TEXT, 
 	forLists TEXT ,
@@ -4485,7 +4548,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spPlittoFriendsFromFb`(friendString TEXT)
+CREATE PROCEDURE `ZDELETE_spPlittoFriendsFromFb`(friendString TEXT)
 BEGIN
 
 call `spSqlLog`(0, CONCAT('call spPlittoFriendsFromFb("',friendString,'")'), 0, 'spPlittoFriendsFromFb');
@@ -4512,7 +4575,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spThingId`(thingname TEXT)
+CREATE PROCEDURE `ZDELETE_spThingId`(thingname TEXT)
 BEGIN
 
 
@@ -4537,4 +4600,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-20 19:35:38
+-- Dump completed on 2015-01-23 19:38:42
