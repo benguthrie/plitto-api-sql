@@ -28,8 +28,10 @@ CREATE TABLE `tlist` (
   `added` datetime NOT NULL,
   `modified` datetime NOT NULL,
   `state` tinyint(1) DEFAULT '1',
-  `dittokey` int(11) NOT NULL DEFAULT '0',
+  `dittokey` int(11) DEFAULT NULL,
   `uuid` varchar(45) DEFAULT NULL,
+  `dittoCount` int(11) DEFAULT '0',
+  `commentCount` int(11) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `id_UNIQUE` (`tid`,`lid`,`uid`),
   UNIQUE KEY `uuid_UNIQUE` (`uuid`),
@@ -40,7 +42,7 @@ CREATE TABLE `tlist` (
   CONSTRAINT `lid` FOREIGN KEY (`lid`) REFERENCES `tthing` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `tid` FOREIGN KEY (`tid`) REFERENCES `tthing` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `tuid` FOREIGN KEY (`uid`) REFERENCES `tuser` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=166723 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=166751 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -51,4 +53,4 @@ CREATE TABLE `tlist` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-23 19:38:43
+-- Dump completed on 2015-01-27  0:12:41

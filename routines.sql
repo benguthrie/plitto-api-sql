@@ -22,7 +22,7 @@
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE FUNCTION `duser`() RETURNS int(11)
+CREATE DEFINER=`root`@`localhost` FUNCTION `duser`() RETURNS int(11)
 BEGIN
 
 RETURN 2;
@@ -41,7 +41,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE FUNCTION `dusers`() RETURNS char(255) CHARSET latin1
+CREATE DEFINER=`root`@`localhost` FUNCTION `dusers`() RETURNS char(255) CHARSET latin1
 BEGIN
 
 RETURN '18,25,14,156,64,132,13,69,724,723,161,168,719';
@@ -60,7 +60,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE FUNCTION `fThingId`(newthingName TEXT) RETURNS int(11)
+CREATE DEFINER=`root`@`localhost` FUNCTION `fThingId`(newthingName TEXT) RETURNS int(11)
 BEGIN
 
 SET @newthingName = newthingName;
@@ -99,7 +99,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `adminAddItemKeyToTDitto`()
+CREATE DEFINER=`root`@`localhost` PROCEDURE `adminAddItemKeyToTDitto`()
 BEGIN
 
 /*
@@ -168,7 +168,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `adminAddUuidToTlist`()
+CREATE DEFINER=`root`@`localhost` PROCEDURE `adminAddUuidToTlist`()
 BEGIN
 
 /*
@@ -201,26 +201,63 @@ DELIMITER ;
 /*!50003 SET character_set_results = utf8 */ ;
 /*!50003 SET collation_connection  = utf8_general_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `adminDeleteUser`()
+CREATE DEFINER=`root`@`localhost` PROCEDURE `adminDeleteUser`( theUid INT(11))
 BEGIN
+SET @uid = theUid; 
 
 
-delete from tlist where uid in (
-select ID 
-from tuser
-where name like '%ben%'
-and id not in (1,168)
-) and id > 0;
 
-delete from tuser
-where name like '%ben%'
-and id not in (1,168);
 
-select ID from tuser
-where name like '%ben%'
-and id not in (1,168);
+/* get ids for the ditto keys */
+SET @dittoKeys = '';
+select group_concat(DISTINCT d.id) into @dittoKeys
+	from tditto d
+	inner join tlist l on d.id = l.dittokey
+	and d.userid = @uid or d.sourceuserid = @uid;
+    
+    /* Remove the dittokey dependency */
+
+SEt @dksql = CONCAT('update tlist set dittokey = 0 where dittokey in (',@dittoKeys,')');
+SET @rmDk = CONCAT('delete from tditto where id in (',@dittoKeys,')');
+
+
+	if LENGTH(@dittoKeys) > 0 THEN
+		prepare stmt from @dksql;
+		execute stmt;
+		deallocate prepare stmt;
+
+
+
+		prepare stmt from @rmDk;
+		execute stmt;
+		deallocate prepare stmt;
+        
+	END IF;
+    
+delete from token where uid = @uid and id > 0;    
+
+delete From presentthing where tlistkey in (
+	select id from tlist where tlist.uid = @uid) and id > 0;
+
+delete from tditto where userid = @uid and id > 0 or sourceuserid =@uid and id > 0;
+
+delete From presentlist where uid = @uid and id > 0;
+delete from presentthing where uid = @uid and id> 0;
+
+delete from tlist where uid = @uid and id > 0;
+
+
+delete from tuser where id = @uid and id > 0;
+
+
+
+/*
+*/
+
+    select @dksql, @rmDk;
+
 
 
 END ;;
@@ -238,7 +275,139 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `adminImportDittos`()
+CREATE DEFINER=`root`@`localhost` PROCEDURE `adminDittoAudit`()
+BEGIN
+ALTER TABLE `plitto2014`.`tditto` 
+ADD COLUMN `processed` INT(11) NULL DEFAULT 0 AFTER `itemDittoed`;
+
+update tlist set dittoCount = 0 where dittoCount > 0 and id > 0;
+
+-- Delete Extra Dittos;
+SET @dittoItemId = 1, @dittoingUserId = null, @duplicateDittos = null, @dittoId = null, @itemCount = null, @sourceUserId = null;
+
+
+SET @keepGoing = true;
+SET @loopCount = 0;
+
+while @keepGoing = true do 
+	
+
+	set @dittoItemId = null, @dittoId = null, @dittoingUserId = null;
+     
+	-- Find something with duplicates.
+	select 
+    min(id), itemDittoed, userid , count(*) as theCount , sourceuserid
+    into @dittoId, @dittoItemId, @dittoingUserId, @itemCount, @sourceUserId 
+	from tditto
+	where itemDittoed > 1 
+	group by itemDittoed, userid 
+	order by theCount desc
+	limit 1
+	;
+
+	-- Get the thing and list id info.
+    select id, tid, lid 
+    into @secondId, @secondTid, @secondLid 
+    from tlist 
+    where id = @dittoItemid
+    limit 1;
+
+	
+/*
+
+	select 
+		@dittoId as dittoId, -- The tditto.id to keep from the batch. 
+		@dittoingUserId as duid, -- The person who made the ditto.abs()
+        @sourceUserId as sourceUserId,
+        @dittoItemId as dittoItemId, -- the key in tlist? 
+        @itemCount as itemCount, 
+        '37' as endingLine, 
+        @secondId, @secondTid, @secondLid, 
+        (@dittoItemId > 0) as test1 , 
+        (@itemCount > 1) as test2;
+*/
+
+	if @itemCount > 1 then 
+		-- What was my ditto key for that item of mine in tlist? 
+		    
+		-- Protect the id from the dittokeys that is actually the one being used. 
+		select dittokey into @protectDittoKey
+		from tlist
+		where uid = @dittoingUserId and lid = @secondLid and tid = @secondTid
+		limit 1;
+        
+        -- Create a string of ids:
+        select group_concat(id) into @deleteKeys from tditto where itemdittoed = @dittoItemId and userid = @dittoingUserId;
+        
+        SET @deleteQuery = Concat('delete from tditto 
+        where id in (',@deleteKeys,') and id != ',@protectDittoKey);
+        
+        PREPARE STMT from @deleteQuery;
+		execute stmt;
+		deallocate prepare stmt;
+        
+		
+        
+	else 
+		SET @keepGoing = false;
+        /* SELECT @dittoItemId as finalItemId, @dittoId as dittoId, @dittoingUserId as dittoingUserId, @itemCount as finalItemCount, @loopCount as loopCount;*/
+	end if;
+    
+    SET @loopCount = @loopCount + 1;
+    
+end while;
+
+/*
+SELECT @dittoItemId as finalItemId, @dittoId as dittoId, @dittoingUserId as dittoingUserId, @itemCount as finalItemCount, @loopCount as loopCount;
+*/
+-- SET @keepGoing = false; -- DEBUG
+SET @dittoColId = null;
+SET @thingDittoedId = null;
+SET @subCount = null;
+
+set @keepGoing = true;
+
+
+WHILE @keepGoing = true  DO
+	SELECT id, itemDittoed into @dittoColId , @thingDittoedId
+    from tditto 
+    where processed =0
+    limit 1;
+	
+    update tlist set dittoCount = dittoCount + 1 
+    where id = @thingDittoedId limit 1;
+    
+    update tditto set processed = 1 where id = @dittoColId limit 1;
+    
+    select count(*) into @subCount from tditto where processed = 0 limit 1;
+    
+    if @subCount = 0 then
+		SET @keepGoing = false;
+	end if;
+    
+END WHILE;
+
+/*
+ALTER TABLE `plitto2014`.`tditto` 
+DROP COLUMN `processed`;
+*/
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `adminImportDittos`()
 BEGIN
 
 
@@ -301,7 +470,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `adminLog`( searchString VARCHAR(255))
+CREATE DEFINER=`root`@`localhost` PROCEDURE `adminLog`( searchString VARCHAR(255))
 BEGIN
 
     
@@ -343,7 +512,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `adminStressTest`()
+CREATE DEFINER=`root`@`localhost` PROCEDURE `adminStressTest`()
 BEGIN
 
 SET @i = 0;
@@ -377,7 +546,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `log`(title VARCHAR(255), log TEXT)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `log`(title VARCHAR(255), log TEXT)
 BEGIN
 
 insert into log(`title`,`log`) VALUES (title,log);
@@ -397,7 +566,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = '' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `migrate`()
+CREATE DEFINER=`root`@`localhost` PROCEDURE `migrate`()
 BEGIN
 
 -- prepare 
@@ -464,7 +633,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `spSqlLog`(
+CREATE DEFINER=`root`@`localhost` PROCEDURE `spSqlLog`(
 	userId INT, 
     thequery TEXT, 
     sp VARCHAR(45),
@@ -492,11 +661,11 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `spSqlLog_Timing`(logKey INT(11) )
+CREATE DEFINER=`root`@`localhost` PROCEDURE `spSqlLog_Timing`(logKey INT(11) )
 BEGIN
 
 
-update dblog set `dblog`.`time` = (UNIX_TIMESTAMP - `dblog`.`time`) 
+update dblog set `dblog`.`time` = (UNIX_TIMESTAMP() - `dblog`.`time`) 
 where `dblog`.`id` = logKey 
 limit 1;
 
@@ -518,7 +687,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_addComment`( 
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_addComment`( 
 	token VARCHAR(59), 
     targetuid INT(12), 
     lid INT(13), 
@@ -672,7 +841,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_addtolist`( thetoken VARCHAR(36), thingName TEXT, listnameid INT )
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_addtolist`( thetoken VARCHAR(36), thingName TEXT, listnameid INT )
 BEGIN
 
 SET @thetoken = thetoken;
@@ -989,7 +1158,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_checkToken`( 
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_checkToken`( 
 	IN sourceProc VARCHAR(45),
 	IN varToken VARCHAR(45),
     IN queryToLog TEXT,
@@ -1078,7 +1247,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_counts`(vToken VARCHAR(50) )
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_counts`(vToken VARCHAR(50) )
 BEGIN
 
 SET @thetoken = vToken;
@@ -1162,7 +1331,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_ditto`(
+CREATE DEFINER=`theuser`@`%` PROCEDURE `v2.0_ditto`(
 	thetoken VARCHAR(36), 
 	itemKey VARCHAR(45), 
 	theaction VARCHAR(20) 
@@ -1181,7 +1350,7 @@ goodTimes:BEGIN
 	call `v2.0_checkToken`( 
 		'v2.0_ditto',
 		@thetoken, 
-        CONCAT('call v2.0_ditto("',thetoken,'","',itemKey,'" , "',theaction,'")'),
+        CONCAT('call `v2.0_ditto`("',thetoken,'","',itemKey,'" , "',theaction,'")'),
         @tokenSuccess, 
         @uid, 
         @friendArray, 
@@ -1222,7 +1391,10 @@ if @theaction LIKE 'ditto' then
 	from tlist 
     where tid = @thingId and lid = @listid and uid = @uid limit 1;
 
-
+	-- credit the ditto
+    update tlist set dittoCount = dittoCount + 1 where id = @tlistId limit 1;
+	
+	
 	-- log the ditto - Working. 
 		-- TODO2 - Handle what happens if a ditto is just returning something to its origional state.
 	/* Insert into tditto only if it isn't the person dittoing themself. */
@@ -1283,6 +1455,7 @@ elseif @theaction LIKE 'remove' then
 	-- Set the state to 0.
 	UPDATE tlist SET state = 0 where tid = @thingId and lid = @listId and uid = @uid limit 1;
 
+	update tlist set dittoCount = dittoCount - 1 where id = @tlistId limit 1;
 
 	-- Remove the notification and hide the ditto log.
 	update 
@@ -1318,14 +1491,20 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_extendFbToken`( varPlittoToken VARCHAR(45), varFbLongToken VARCHAR(255) )
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_extendFbToken`( varPlittoToken VARCHAR(45), varFbLongToken TEXT )
 BEGIN
 
 SET @plittoToken = varPlittoToken;
 SET @fbLongToken = varFbLongToken;
 
-call `spSqlLog`(0, CONCAT('call `v2.0_extendFbToken`("',@plittoToken,'","',@fbLongToken,'" )'), 0, 'v2.0_extendFbToken');
+SET @logKey = null;
 
+call `spSqlLog`(
+	0,
+	CONCAT('call `v2.0_extendFbToken`("',@plittoToken,'","',@fbLongToken,'" )'),
+    'v2.0_extendFbToken', 
+    @logKey  );
+    
 
 -- Check to see if the token is valid.
 
@@ -1354,6 +1533,8 @@ else
 	
 end if;
 
+call `spSqlLog_Timing` (@logKey );
+
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -1369,7 +1550,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_fbLogin`(
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_fbLogin`(
 	fbuid BIGINT, fbname VARCHAR(255), fbemail VARCHAR(255) , fbfriendsarray TEXT, newFbToken VARCHAR(255) )
 BEGIN
 /*
@@ -1381,7 +1562,7 @@ BEGIN
 SET @logKey = null;
 call `spSqlLog`(
 	0,
-	CONCAT('call `v2.0_fbLogin`("',fbuid,'","',fbname,'","',fbemail,'","',fbfriendsarray,'")'),
+	CONCAT('call `v2.0_fbLogin`("',fbuid,'","',fbname,'","',fbemail,'","',fbfriendsarray,'", "',newFbToken,'")'),
     'v2.0_fbLogin', @logKey );
 
 SET @fbuid = fbuid;
@@ -1404,7 +1585,6 @@ SET @friendids = '';
 	from tuser 
     where 
 		tuser.fbuid = @fbuid 
-        
 	limit 1;
 
 SET @result = CONCAT('fbuid: ' 
@@ -1415,6 +1595,7 @@ SET @result = CONCAT('fbuid: '
 
 -- This test is failing: Maybe?
 if @puid is null then
+-- select 'puid was null. Test worked.DEBUG ' as `DEBUGA1`;
 	set @result = CONCAT(@result,' puid was null. Create account.');
 	
     -- Create the new user.
@@ -1431,10 +1612,20 @@ if @puid is null then
     
     SET @newAccount = true;
     
+    -- SELECT 'new account should be true; ' as text, @newAccount as DEBUGresults;
+
+    
+    
+    
+    
 -- Step 2 -- See if there are updates to make
 elseif @active != 1 or @username != fbname or @email != fbemail then
+	-- select 'puid was null. Test worked. ' as `DEBUGB`; 
 	update tuser set `name` = @fbname, email = @fbemail, `active` = 1 where id = @puid limit 1;
 	SET @result = CONCAT(@result,' | Update account information');
+else 
+	-- select 'puid was not null, and active wasn not 1, etc. null. Test worked. ' as `DEBUGC`; 
+    set @debug = false;
 end if;
 
 
@@ -1448,10 +1639,24 @@ SET @friendquery = CONCAT('select GROUP_CONCAT(id) INTO @friendids from tuser wh
 
 -- Step Add this user as friends to their friends 1/9/2014
 if @newAccount = true then 
+	-- select 'Create a new account DEBUG' as DEBUGactuion;
 	-- Get a list of friend IDS who are this user's friends, and add this user to their graph 
 	SET @appendToFriends = CONCAT(
-		'update token set friendsarray = CONCAT( CONVERT(friendsarray USING utf8) , ',', CONVERT(',@puid,' using utf8) ) 
+		'update token set friendsarray = CONCAT( 
+			CONVERT(friendsarray USING utf8) ,",",  CONVERT(',@puid,' using utf8) ) 
 		where active = 1 and token.`id` > 0 and token.`uid` in (',@friendids,') ');
+    
+    -- select @appendToFriends as DEBUGappendtofriends;
+    
+	prepare stmt from @appendToFriends;
+    execute stmt;
+    deallocate prepare stmt;
+    
+    -- log this.
+    SET @logKey = 0;
+    call `spSqlLog`(1000, @appendToFriends, 'appendtofriends', @logKey);
+    
+    
         
 	-- Add and alert for each of these users to let them know that their friend joined.
     
@@ -1565,8 +1770,9 @@ SET @qfilter = '';
 SET @extraJoin = '';
 SET @theType = thetype; /* This isn't used, for some reason */
 
+SET @defaultLimit = 50;
+
 goodTimes:BEGIN
-	
 	
 	SET @tokenSuccess = false;
 	SET @errorMessage = '';
@@ -1574,7 +1780,7 @@ goodTimes:BEGIN
 	call `v2.0_checkToken`( 
 		'v2.0_feed',
 		@thetoken, 
-        concat('`call v2.0_feed`("', thetoken,'","',thetype,'","',userfilter,'","',listfilter,'","',mystate,'","',continueKey,'","',newerOrOlder , '")' ) ,
+        concat('call `v2.0_feed`("', thetoken,'","',thetype,'","',userfilter,'","',listfilter,'","',mystate,'","',continueKey,'","',newerOrOlder , '")' ) ,
         @tokenSuccess, 
         @uid, 
         @friendArray, 
@@ -1633,15 +1839,24 @@ SET @qDo = CONCAT(
 	', @userFields ,'
 	l.lid, ln.name as listname, 
 	l.tid, tn.name as thingname,
-	l.added, l.state, l.dittokey, dk.uid as dittouser, du.name as dittousername, du.fbuid as dittofbuid,
+	l.added, 
+    l.state, 
+    l.dittokey, 
+    dk.sourceuserid as dittouser, 
+    du.name as dittousername, 
+    du.fbuid as dittofbuid,
 	ml.id as mykey
-	, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive , l.uuid
+	, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
+    , l.uuid
+    , l.dittoCount
+    , l.commentCount
 from tlist l
 inner join tthing ln on ln.id = l.lid 
 inner join tthing tn on tn.id = l.tid 
 inner join tuser un on un.id = l.uid
-left outer join tlist dk on dk.id = l.dittokey 
-left outer join tuser du on du.id = dk.uid
+
+left outer join tditto dk on dk.id = l.dittokey and dk.hidden = 0 
+left outer join tuser du on du.id = dk.sourceuserid
 left outer join tlist ml on ml.uid = ',@uid,' and ml.lid = l.lid and ml.tid = l.tid and ml.state = 1
 left outer join tcomments tc on tc.itemid = l.id and tc.byuserid = ',@uid,'
 where 
@@ -1649,8 +1864,9 @@ l.state = 1 ',
 @whereUser, 
 @qfilter, @oldestFilter,
 ' order by l.id desc
-limit 50');
+limit ',@defaultLimit);
 
+-- select @qDo;
 
 prepare stmt from @qDo;
 execute stmt;
@@ -1677,7 +1893,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_friends`(
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_friends`(
 	thetoken VARCHAR(36)
 )
 BEGIN
@@ -1783,7 +1999,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_GetMore`(
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_GetMore`(
 	thetoken VARCHAR(36),
 	
 	forUserIDs TEXT ,
@@ -2052,7 +2268,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_getSome`(
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_getSome`(
 	thetype VARCHAR(10)	-- List or User or Null
 	, thetoken VARCHAR(36)	
 	, theuserfilter TEXT
@@ -2186,11 +2402,11 @@ IF @sharedFilter = 'ditto' THEN
 	SET @havingShared = ' HAVING dittoable > 2 ';
 	SET @myKeyFilter = ' and m.id is null ';
 ELSEIF @sharedFilter = 'shared' THEN
-	SET @havingShared = ' HAVING shared > 2 ';
+	SET @havingShared = ' HAVING shared > 0 ';
 	SET @myKeyFilter = ' and m.id > 0 ';
 ELSE 
 	-- This would be to show without a filter.
-	SET @havingShared = ' HAVING thecount > 2 ';
+	SET @havingShared = ' HAVING thecount > 0 ';
 	SET @myKeyFilter = ' ';
 END IF;
 
@@ -2200,10 +2416,19 @@ END IF;
 		-- ',@mylists,' -- This would only show lists that I already have. That seems limiting.
 if @userFilter != 'strangers' then	
     SET @batchA = CONCAT('select 
-	l.uid, l.lid, COUNT(l.id) - COUNT(m.id) AS dittoable, COUNT(l.id) AS thecount, COUNT(m.id) as shared INTO @Auid, @Alid, @Adittoable, @Acount, @Ashared
+	l.uid, l.lid, COUNT(l.id) - COUNT(m.id) AS dittoable, 
+    COUNT(l.id) AS thecount, 
+    COUNT(m.id) as shared 
+    INTO @Auid, @Alid, @Adittoable, @Acount, @Ashared
 	from tlist l
-	left outer join tlist m on m.lid = l.lid and m.tid=l.tid and m.uid = ',@uid,' 
-	left outer join presentlist pl on pl.uid = ',@uid,' and pl.fromuid = l.uid and pl.lid = l.lid
+	left outer join 
+		tlist m on m.lid = l.lid 
+			and m.tid=l.tid 
+            and m.uid = ',@uid,' 
+	left outer join 
+		presentlist pl on pl.uid = ',@uid,' 
+			and pl.fromuid = l.uid 
+            and pl.lid = l.lid
 	where 
 		l.uid in (',@friendArray,') 
 		and l.state = 1
@@ -2217,13 +2442,20 @@ if @userFilter != 'strangers' then
 	
 	SET @batchA = CAST(@batchA AS CHAR CHARACTER SET UTF8);
 	-- 	SELECT 'batcha' AS context;
--- select @batchA as batchA, @uid as uid, @friendArray as friendsarray, @mylists as mylists, @friendOverload as friendoverload;
+-- 
+
 -- 	
-	PREPARE stmt FROM @batchA;	EXECUTE stmt;	DEALLOCATE PREPARE stmt;
+	PREPARE stmt FROM @batchA;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+    
+    -- select @batchA as batchA, @uid as uid, @friendArray as friendsarray, @mylists as mylists, @friendOverload as friendoverload;
 	
-	-- if we don't have a valid user, then bail.
-	IF CHAR_LENGTH(@Auid) = 0 OR CHAR_LENGTH(@Alid) = 0 THEN
-		SELECT TRUE AS error, 'no users meet your criteria' AS errortxt;
+	-- if we don't have a valid user from the first section, then bail.
+	IF CHAR_LENGTH(@Auid) = 0 OR CHAR_LENGTH(@Alid) = 0 or @Alid is null or @Auid is null THEN
+		-- 
+        select @batchA as batchA, @uid as uid, @friendArray as friendsarray, @mylists as mylists, @friendOverload as friendoverload;
+        -- SELECT TRUE AS error, 'no rows in common' AS errortxt;
 		LEAVE goodTimes;
 	END IF;
 	
@@ -2283,7 +2515,7 @@ if @userFilter != 'strangers' then
 		limit 1')
 		;
 	END IF;
---  
+--  select CHAR_LENGTH(@Alid) as alidlength, @batchB, @Alid, @listOverload, @friendOverload, @myKeyFilter, @havingShared;
 	PREPARE stmt FROM @batchB;		EXECUTE stmt;		DEALLOCATE PREPARE stmt;
 /* END PICKING FROM FRIENDS */
 end if; -- End filtering out if it's strangers only.
@@ -2316,7 +2548,10 @@ IF @showStrangers = TRUE THEN
 	limit 1')
 	;
 -- -- ',@notmylists,'
-PREPARE stmt FROM @batchC;		EXECUTE stmt;		DEALLOCATE PREPARE stmt;
+PREPARE stmt FROM @batchC;		
+EXECUTE stmt;		
+DEALLOCATE PREPARE stmt;
+
 	-- Batch D - A list from strangers, I don't have that list, dittoable > 3, longest time since presented to me 
 	SET @batchD = CONCAT('select
 	max(l.lid), count(l.id) - count(m.id) as dittoable, 0, COUNT(l.id) AS thecount, COUNT(m.id) as shared, group_concat(distinct l.uid SEPARATOR ",")  as strangersWith
@@ -2341,20 +2576,22 @@ END IF;
 DROP TABLE IF EXISTS showsometemp;
 CREATE TABLE showsometemp (
 	sstid INT NOT NULL AUTO_INCREMENT,
-	id INT,
-	tid INT,
-	lid INT,
-	uid INT,
+	id INT(11),
+	tid INT(11),
+	lid INT(11),
+	uid INT(11),
     uuid VARCHAR(45), -- Adds the unique identifier to the table.
 	added DATETIME,
 	modified DATETIME,
-	state INT,
-	dittokey INT,
+	state INT(1),
+	dittokey INT(11),
 	groupid INT,
-	dittoable INT,
-	lastshowncount INT,
+	dittoable INT(11),
+	lastshowncount INT(11),
 	lastshown DATETIME,
-	mykey INT
+	mykey INT(11),
+    dittoCount INT(8),
+    commentCount INT(8)
 	
 	, PRIMARY KEY (sstid)
 );
@@ -2376,10 +2613,12 @@ IF @Alid > 0 AND @Auid > 0 THEN
 		lastshowncount , 
 		lastshown, 
 		mykey, 
-        uuid )
+        uuid, 
+        dittoCount,
+        commentCount)
 	SELECT l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.state, l.dittokey, 1, ',@Adittoable,'
 		, pt.count, pt.lastdate
-		, m.id, l.uuid
+		, m.id, l.uuid, l.dittoCount, l.commentCount
 	FROM tlist l
 	LEFT OUTER JOIN tlist m ON m.uid = ',@uid,' AND m.lid = l.lid AND m.tid = l.tid 
 	LEFT OUTER JOIN presentthing pt ON pt.tlistkey = l.id and pt.uid = ',@uid,' 
@@ -2413,11 +2652,16 @@ IF @Blid > 0 AND @Buid > 0 THEN
 		lastshowncount , 
 		lastshown, 
 		mykey,
-        uuid )
+        uuid, 
+        dittoCount,
+        commentCount )
 	SELECT l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.state, l.dittokey, 2, ',@Bdittoable,'
 		, pt.count, pt.lastdate
 		, m.id
-        , l.uuid 
+        , l.uuid,
+        l.dittoCount,
+        l.commentCount
+
 	FROM tlist l
 	LEFT OUTER JOIN tlist m ON m.uid = ',@uid,' AND m.lid = l.lid AND m.tid = l.tid 
 	LEFT OUTER JOIN presentthing pt ON pt.tlistkey = l.id and pt.uid = ',@uid,' 
@@ -2444,7 +2688,9 @@ IF CHAR_LENGTH(@Clid) > 0 AND CHAR_LENGTH(@Cuid) > 0 THEN
 		lastshowncount , 
 		lastshown,
 		mykey,
-        uuid 
+        uuid ,
+        dittoCount,
+        commentCount
 	)
 	select 
 		l.id, 
@@ -2454,7 +2700,9 @@ IF CHAR_LENGTH(@Clid) > 0 AND CHAR_LENGTH(@Cuid) > 0 THEN
         l.added, 
         l.modified, l.state, l.dittokey, 3, ',@Cdittoable,', pt.count, pt.lastdate, 
 		m.id,
-        l.uuid
+        l.uuid,
+        l.dittoCount,
+        l.commentCount
 	from tlist l
 	left outer join tlist m on m.uid = ',@uid,'
 	 and m.lid = l.lid and m.tid = l.tid and m.state = 1
@@ -2482,7 +2730,9 @@ IF CHAR_LENGTH(@Dlid) > 0 AND CHAR_LENGTH(@Duid) > 0 THEN
         lastshowncount, 
         lastshown, 
         mykey, 
-        uuid  
+        uuid,
+        dittoCount,
+        commentCount
 	)
 	select 
 		l.id, 
@@ -2498,7 +2748,9 @@ IF CHAR_LENGTH(@Dlid) > 0 AND CHAR_LENGTH(@Duid) > 0 THEN
         pt.count, 
         pt.lastdate, 
         m.id, 
-        l.uuid
+        l.uuid,
+        l.dittoCount,
+        l.commentCount
 	from tlist l
 	left outer join 
 		tlist m on m.uid = ',@uid,' and m.lid = l.lid and m.tid = l.tid
@@ -2532,28 +2784,33 @@ SELECT
     s.dittokey AS dittokey, 
     s.dittoable , 
     s.groupid, 
-	dk.uid AS dittouser, 
-    du.name AS dittousername, 
-    du.fbuid AS dittofbuid, 
+	td.sourceuserid AS dittouser, 
+    du.`name` AS dittousername, 
+    du.`fbuid` AS dittofbuid, 
     lastshowncount, 
     lastshown, 
     mykey AS mykey, 
     tc.`comment` as commentText, 
     tc.`read` as commentRead, 
     tc.`active` as commentActive,
-    s.uuid
+    s.uuid,
+    s.dittoCount,
+    s.commentCount
 
 FROM showsometemp s
 
 INNER JOIN tthing tn ON tn.id = s.tid
 INNER JOIN tuser un ON un.id = s.uid
 INNER JOIN tthing lna ON lna.id = s.lid
-LEFT OUTER JOIN tlist dk ON dk.id = s.dittokey 
-LEFT OUTER JOIN tuser du ON du.id = dk.uid
+LEFT OUTER JOIN tditto td ON td.id = s.dittokey and td.hidden = 0
+LEFT OUTER JOIN tuser du ON du.id = td.sourceuserid
 left outer join tcomments tc on tc.itemid = s.id and tc.byuserid = @uid 
 
 group by s.id
+/*
 
+left outer join tditto dk on dk.id = l.dittokey 
+left outer join tuser du on du.id = dk.sourceuserid*/
 
 ;
 -- Update the log to show most recently shown lists.
@@ -2609,7 +2866,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_listOfLists`(thetoken VARCHAR(36), userfilter TEXT, toIgnore TEXT)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_listOfLists`(thetoken VARCHAR(36), userfilter TEXT, toIgnore TEXT)
 BEGIN
 
 SET @thetoken = thetoken;
@@ -2737,7 +2994,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_listSearch`(thetoken VARCHAR(36), searchTerm TEXT)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_listSearch`(thetoken VARCHAR(36), searchTerm TEXT)
 BEGIN
 
 SET @thetoken = thetoken;
@@ -2797,7 +3054,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_loadList`(
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_loadList`(
 			thetoken VARCHAR(36),
 			theType 	VARCHAR(10),
 			listId		INT,
@@ -2895,7 +3152,9 @@ CREATE TABLE showsometemp (
 	lastshowncount INT,
 	lastshown DATETIME,
 	mykey INT,
-    uuid VARCHAR(45)
+    uuid VARCHAR(45),
+    dittoCount  INT(8),
+    commentCount INT(8)
 	
 	, PRIMARY KEY (sstid)
 );		
@@ -2915,21 +3174,23 @@ CREATE TABLE showsometemp (
 			, tn.name AS thingname,   
 			l.added, 
             l.state, 
-			l.dittokey AS dittokey
-			, dk.uid AS dittouser, 
+			l.dittokey AS dittokey, 
+            td.sourceuserid AS dittouser, 
 			du.name AS dittousername, 
 			du.fbuid AS dittofbuid, 
 			m.id as mykey
             , tc.`comment` as commentText, 
             tc.`read` as commentRead, 
             tc.`active` as commentActive,
-            l.uuid
+            l.uuid,
+            l.dittoCount,
+            l.commentCount
 		from tlist l
 			INNER JOIN tthing tn ON tn.id = l.tid
 			INNER JOIN tuser un ON un.id = l.uid
 			INNER JOIN tthing lna ON lna.id = l.lid
-			LEFT OUTER JOIN tlist dk ON dk.id = l.dittokey 
-			LEFT OUTER JOIN tuser du ON du.id = dk.uid
+			LEFT OUTER JOIN tditto td ON td.id = l.dittokey and td.hidden = 0
+			LEFT OUTER JOIN tuser du ON du.id = td.sourceuserid
 			LEFT OUTER JOIN tlist m on m.uid = ',@uid,' and m.lid = l.lid and m.tid = l.tid and m.state = 1
             left outer join tcomments tc on tc.itemid = l.id and tc.byuserid = ',@uid,'
 		where 
@@ -2955,21 +3216,23 @@ CREATE TABLE showsometemp (
             tn.name AS thingname,   
 			l.added, 
             l.state, 
-			l.dittokey AS dittokey
-			, dk.uid AS dittouser, 
+			l.dittokey AS dittokey, 
+            td.sourceuserid AS dittouser, 
 			du.name AS dittousername, 
-			du.fbuid AS dittofbuid, 
+			du.fbuid AS dittofbuid,  
 			m.id as mykey
             , tc.`comment` as commentText, 
             tc.`read` as commentRead, 
             tc.`active` as commentActive,
-            l.uuid
+            l.uuid,
+            l.dittoCount,
+            l.commentCount
 		from tlist l
 			INNER JOIN tthing tn ON tn.id = l.tid
 			INNER JOIN tuser un ON un.id = l.uid
 			INNER JOIN tthing lna ON lna.id = l.lid
-			LEFT OUTER JOIN tlist dk ON dk.id = l.dittokey 
-			LEFT OUTER JOIN tuser du ON du.id = dk.uid
+			LEFT OUTER JOIN tditto td ON td.id = l.dittokey and td.hidden = 0
+			LEFT OUTER JOIN tuser du ON du.id = td.sourceuserid
 			LEFT OUTER JOIN tlist m on m.uid = ',@uid,' and m.lid = l.lid and m.tid = l.tid and m.state = 1
             left outer join tcomments tc on tc.itemid = l.id and tc.byuserid = @uid
 		where 
@@ -2982,10 +3245,21 @@ CREATE TABLE showsometemp (
 		
 	ELSEIF @theType = 'ditto' THEN
 			SET @q = CONCAT('
-		INSERT INTO showsometemp (`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`,`uuid`)
-		select l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.dittokey AS dittokey, m.id, l.uuid
+		INSERT INTO showsometemp (`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`,`uuid`,`dittoCount`,`commentCount`)
+		select 
+			l.id, 
+			l.tid, 
+            l.lid, 
+            l.uid, 
+            l.added, 
+            l.modified, 
+            l.dittokey AS dittokey, 
+            m.id, 
+            l.uuid,
+            l.dittoCount, 
+            l.commentCount
 		from tlist l
-			LEFT OUTER JOIN tlist dk ON dk.id = l.dittokey 
+			-- LEFT OUTER JOIN tditto td ON td.id = l.dittokey and td.hidden = 0
 			LEfT OUTER JOIN presentthing pt on pt.tlistkey = l.id 
 			left outer join tlist m on m.uid = ',@uid,' and m.lid = l.lid and m.tid = l.tid and m.state = 1
 		where 
@@ -3009,20 +3283,22 @@ CREATE TABLE showsometemp (
 			s.added, 
             s.state, 
             s.dittokey, 
-            dk.uid as dittouser, 
+            td.sourceuserid AS dittouser,
             du.name as dittousername, 
             du.fbuid as dittofbuid, 
             s.mykey, 
             tc.`comment` as commentText, 
             tc.`read` as commentRead, 
             tc.`active` as commentActive, 
-            s.uuid
+            s.uuid,
+            s.dittoCount,
+            s.commentCount
 		from showsometemp s
 			inner join tuser u on u.id = s.uid 
 			inner join tthing lna ON lna.id = s.lid
 			inner join tthing tn on tn.id = s.tid
-			LEFT OUTER JOIN tlist dk ON dk.id = s.dittokey 
-			LEFT OUTER JOIN tuser du ON du.id = dk.uid
+			LEFT OUTER JOIN tditto td ON td.id = s.dittokey and td.hidden = 0
+			LEFT OUTER JOIN tuser du ON du.id = td.sourceuserid
             left outer join tcomments tc on tc.itemid = s.id and tc.byuserid = @uid
 		order by s.uid asc, s.modified desc
 		;
@@ -3042,8 +3318,8 @@ CREATE TABLE showsometemp (
         
 ELSEIF @theType = 'shared' THEN
 			SET @q = CONCAT('
-		INSERT INTO showsometemp(`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`,`uuid`)
-		select l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.dittokey AS dittokey, m.id, l.uuid
+		INSERT INTO showsometemp(`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`,`uuid`,`dittoCount`,`commentCount`)
+		select l.id, l.tid, l.lid, l.uid, l.added, l.modified, l.dittokey AS dittokey, m.id, l.uuid, l.dittoCount, l.commentCount
         
 		from tlist l
 			LEFT OUTER JOIN tlist dk ON dk.id = l.dittokey 
@@ -3060,16 +3336,33 @@ ELSEIF @theType = 'shared' THEN
 		
 		-- Join the items and return them.
 		SELECT  
-		s.id, s.uid, u.name AS username, u.fbuid,
-		s.lid, lna.name AS listname, s.tid, tn.name AS thingname,
-		s.added, 1, s.dittokey, dk.uid AS dittouser, du.name AS dittousername, du.fbuid AS dittofbuid, s.mykey
-        , tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive, s.uuid
+			s.id, 
+            s.uid, 
+            u.name AS username, 
+            u.fbuid,
+            s.lid, 
+            lna.name AS listname, 
+            s.tid, 
+            tn.name AS thingname,
+			s.added, 
+			1, 
+            s.dittokey, 
+            td.sourceuserid AS dittouser, 
+            du.name AS dittousername, 
+            du.fbuid AS dittofbuid, 
+            s.mykey, 
+            tc.`comment` as commentText, 
+            tc.`read` as commentRead,
+            tc.`active` as commentActive, 
+            s.uuid, 
+            s.dittoCount, 
+            s.commentCount
 		FROM showsometemp s
 			INNER JOIN tuser u ON u.id = s.uid 
 			INNER JOIN tthing lna ON lna.id = s.lid
 			INNER JOIN tthing tn ON tn.id = s.tid
-			LEFT OUTER JOIN tlist dk ON dk.id = s.dittokey 
-			LEFT OUTER JOIN tuser du ON du.id = dk.uid
+			LEFT OUTER JOIN tditto td ON td.id = s.dittokey  and td.hidden = 0
+			LEFT OUTER JOIN tuser du ON du.id = td.sourceuserid
             left outer join tcomments tc on tc.itemid = s.id and tc.byuserid = @uid
 		ORDER BY s.uid ASC, s.modified DESC
 		;
@@ -3089,7 +3382,7 @@ ELSEIF @theType = 'shared' THEN
         
 ELSEIF @theType = 'strangers' THEN
 			SET @q = CONCAT('
-		INSERT INTO showsometemp(`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`,`uuid`)
+		INSERT INTO showsometemp(`id`,`tid`,`lid`,`uid`,`added`,`modified`,`dittokey`,`mykey`,`uuid`,`dittoCount`,`commentCount`)
 		select 
 			l.id, 
             l.tid, 
@@ -3099,7 +3392,11 @@ ELSEIF @theType = 'strangers' THEN
             l.modified, 
             l.dittokey AS dittokey, 
             m.id, 
-            l.uuid
+            l.uuid,
+            l.dittoCount,
+            l.commentCount
+            
+
 		from tlist l
 			LEFT OUTER JOIN tlist dk ON dk.id = l.dittokey 
 			LEFT OUTER JOIN tlist m on m.uid = ',@uid,' and m.lid = l.lid and m.tid = l.tid and m.state = 1
@@ -3120,21 +3417,23 @@ ELSEIF @theType = 'strangers' THEN
 			s.lid, lna.name AS listname, 
             s.tid, tn.name AS thingname,
 			s.added, 1, s.dittokey, 
-            dk.uid AS dittouser, 
+            td.sourceuserid AS dittouser,
             du.name AS dittousername, 
             du.fbuid AS dittofbuid, 
             s.mykey
 			, tc.`comment` as commentText, 
             tc.`read` as commentRead, 
             tc.`active` as commentActive,
-            s.uuid
+            s.uuid,
+            s.dittoCount,
+            s.commentCount
             
 		FROM showsometemp s
 			-- INNER JOIN tuser u ON u.id = s.uid 
 			INNER JOIN tthing lna ON lna.id = s.lid
 			INNER JOIN tthing tn ON tn.id = s.tid
-			LEFT OUTER JOIN tlist dk ON dk.id = s.dittokey 
-			LEFT OUTER JOIN tuser du ON du.id = dk.uid
+			LEFT OUTER JOIN tditto td ON td.id = s.dittokey and td.hidden = 0
+			LEFT OUTER JOIN tuser du ON du.id = td.sourceuserid
             left outer join tcomments tc on tc.itemid = s.id and tc.byuserid = @uid
 		ORDER BY s.uid ASC, s.modified DESC
 		;
@@ -3173,7 +3472,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_makeRead`(vTheToken VARCHAR(50), vTheType VARCHAR(50), vKeys TEXT)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_makeRead`(vTheToken VARCHAR(50), vTheType VARCHAR(50), vKeys TEXT)
 BEGIN
 -- call `v2.0_makeRead` ('ditto','1831, 1830, 1829, 1675, 1674, 1673, 1672, 1671, 1625, 1591, 1590, 1589, 1588, 1580, 1579, 1576, 1572, 1571, 1567, 1558, 1557, 1556, 1555, 1554, 1551, 1550, 1549, 1534, 1533, 1532');
 
@@ -3251,7 +3550,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_notifications`(vToken VARCHAR(55), vUserFilter INT(12) )
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_notifications`(vToken VARCHAR(55), vUserFilter INT(12) )
 BEGIN
 
 SET @thetoken = vToken;
@@ -3428,7 +3727,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_search`(thetoken VARCHAR(36), term VARCHAR(255))
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_search`(thetoken VARCHAR(36), term VARCHAR(255))
 BEGIN
 SET @thetoken = thetoken;
 set @term = term;
@@ -3546,7 +3845,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_thingDetail`(thetoken VARCHAR(36), thethingid INT)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_thingDetail`(thetoken VARCHAR(36), thethingid INT)
 BEGIN
 
 
@@ -3581,17 +3880,33 @@ goodTimes:BEGIN
 
 SET @q = CONCAT('
 select 
-l.id, l.uid, u.name as username, u.fbuid, l.lid, ln.name as listname, 
-l.tid, tn.name as thingname, l.added, l.dittokey
-, ml.id as mykey, dk.uid as dittouser, du.fbuid as dittofbuid, du.name as dittousername
-, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive , `l`.`uuid` 
+	l.id, 
+    l.uid, 
+    u.name as username, 
+    u.fbuid, 
+    l.lid, 
+    ln.name as listname, 
+	l.tid, 
+    tn.name as thingname, 
+    l.added, 
+	l.dittokey,
+	ml.id as mykey, 
+    td.sourceuserid as dittouser, 
+    du.fbuid as dittofbuid, 
+	du.name as dittousername, 
+	tc.`comment` as commentText, 
+    tc.`read` as commentRead, 
+	tc.`active` as commentActive , 
+    `l`.`uuid`,
+    null as dittoCount,
+    null as commentCount
 from tlist l 
 inner join tthing ln on l.lid = ln.id
 inner join tthing tn on l.tid = tn.id
 inner join tuser u on l.uid = u.id
 left outer join tlist ml on ml.uid = ',@uid,' and ml.lid = l.lid and ml.tid = l.tid 
-left outer join tlist dk on dk.id = l.dittokey
-left outer join tuser du on du.id = dk.uid
+left outer join tditto td on td.id = l.dittokey and td.hidden = 0
+left outer join tuser du on du.id = td.sourceuserid
 left outer join tcomments tc on tc.itemid = l.id and tc.byuserid = ',@uid,'
 where 
 	l.tid = ',@thingid,' and l.state = 1
@@ -3600,17 +3915,28 @@ where
 union
 
 select 
-l.id, l.uid, "Anonymous" as username, 0 , l.lid, ln.name as listname, 
-l.tid, tn.name as thingname, 0, 0
-, ml.id as mykey, 0 as dittouser, 0 as dittofbuid, "Anonymous" as dittousername
-, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive , `l`.`uuid` 
+	l.id, 
+    l.uid, 
+    "Stranger" as username, 
+    0 , 
+	l.lid, 
+    ln.name as listname, 
+    l.tid, 
+    tn.name as thingname, 
+    0, 0, 
+    ml.id as mykey, 
+    0 as dittouser, 
+    0 as dittofbuid, 
+	"Stranger" as dittousername, 
+    tc.`comment` as commentText, 
+    tc.`read` as commentRead, tc.`active` as commentActive , `l`.`uuid` ,
+    null as dittoCount,
+    null as commentCount
 from tlist l 
 inner join tthing ln on l.lid = ln.id
 inner join tthing tn on l.tid = tn.id
 inner join tuser u on l.uid = u.id
 left outer join tlist ml on ml.uid = ',@uid,' and ml.lid = l.lid and ml.tid = l.tid 
-left outer join tlist dk on dk.id = l.dittokey
-left outer join tuser du on du.id = dk.uid
 left outer join tcomments tc on tc.itemid = l.id and tc.byuserid = ',@uid,'
 
 where 
@@ -3643,7 +3969,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_thingid`(thetoken VARCHAR(36), thingname TEXT)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_thingid`(thetoken VARCHAR(36), thingname TEXT)
 BEGIN
 
 SET @thetoken = thetoken;
@@ -3660,7 +3986,7 @@ goodTimes:BEGIN
 	call `v2.0_checkToken`( 
 		'v2.0_thingid',
 		@thetoken, 
-        CONCAT('call v2.0_thingid("',@thetoken,'","',thingname,'")'),
+        CONCAT('call `v2.0_thingid`("',@thetoken,'","',thingname,'")'),
         @tokenSuccess, 
         @uid, 
         @friendArray, 
@@ -3698,7 +4024,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_thingName`( thetoken VARCHAR(46), thingId INT(11))
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_thingName`( thetoken VARCHAR(46), thingId INT(11))
 BEGIN
 
 SET @thingId = thingId;
@@ -3720,7 +4046,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_tokenCheck`( vtoken VARCHAR(36))
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_tokenCheck`( vtoken VARCHAR(36))
 BEGIN
 
 SET @token = vtoken;
@@ -3753,7 +4079,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `v2.0_userInfo`(thetoken VARCHAR(46), thisUserId INT(15) )
+CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_userInfo`(thetoken VARCHAR(46), thisUserId INT(15) )
 BEGIN
 
 
@@ -3802,7 +4128,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `ZDELETE_spAddToList`(thingName TEXT, listnameid INT, userid INT )
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spAddToList`(thingName TEXT, listnameid INT, userid INT )
 BEGIN
 -- addToList("'.$_POST['thingName'].'","'.$_POST['listnameid'].'","'.$_POST['userid'].'","'.$_POST['userfb'].'");'accessible
 
@@ -3858,7 +4184,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `ZDELETE_spDitto`(userid INT, sourceuserid INT, thingid INT, 
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spDitto`(userid INT, sourceuserid INT, thingid INT, 
 	listid INT, theaction VARCHAR(20) , myFriends TEXT)
 BEGIN
 
@@ -3964,7 +4290,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `ZDELETE_spDittosUser`(userId int, aboutUserIds TEXT)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spDittosUser`(userId int, aboutUserIds TEXT)
 BEGIN
 
 call `spSqlLog`(userid, CONCAT('call spDittosUser("',userId,'","',aboutUserIds,'"'), 0, 'spDittosUser');
@@ -4018,7 +4344,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `ZDELETE_spFriendsFB`(
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spFriendsFB`(
 	userId INT, 
 	forUserIDs TEXT
 )
@@ -4108,7 +4434,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `ZDELETE_spGetActivity`(userid INT, users TEXT, lastDate DATETIME)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spGetActivity`(userid INT, users TEXT, lastDate DATETIME)
 BEGIN
 -- call getActivity(for users ,last activity date)
 -- call getActivity('2,13,14,1','')
@@ -4231,7 +4557,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `ZDELETE_spLists`(
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spLists`(
 	userId INT, 
 	forUserIDs TEXT, 
 	forLists TEXT ,
@@ -4364,7 +4690,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `ZDELETE_spListsB`(
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spListsB`(
 	userId INT, 
 	forUserIDs TEXT, 
 	forLists TEXT ,
@@ -4548,7 +4874,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `ZDELETE_spPlittoFriendsFromFb`(friendString TEXT)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spPlittoFriendsFromFb`(friendString TEXT)
 BEGIN
 
 call `spSqlLog`(0, CONCAT('call spPlittoFriendsFromFb("',friendString,'")'), 0, 'spPlittoFriendsFromFb');
@@ -4575,7 +4901,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `ZDELETE_spThingId`(thingname TEXT)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `ZDELETE_spThingId`(thingname TEXT)
 BEGIN
 
 
@@ -4600,4 +4926,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-23 19:38:42
+-- Dump completed on 2015-01-27  0:12:40
