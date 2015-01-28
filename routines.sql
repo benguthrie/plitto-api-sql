@@ -856,7 +856,7 @@ goodTimes:BEGIN
 	call `v2.0_checkToken`( 
 		'v2.0_addtolist',
 		@thetoken, 
-        CONCAT('call v2.0_addtolist("',@thetoken,'","',thingName,'","',listnameid,'")'),
+        CONCAT('call `v2.0_addtolist`("',@thetoken,'","',thingName,'","',listnameid,'")'),
         @tokenSuccess, 
         @uid, 
         @friendArray, 
@@ -865,7 +865,7 @@ goodTimes:BEGIN
         
         );
     
-    if @tokenSuccess = false then
+    if @tokenSuccess = false or LENGTH(thingName) = 0 then
 		LEAVE goodTimes;
 	end if;
     /* End Token Check Block */
@@ -902,19 +902,21 @@ else
 
 end if;
 
-SELECT @thekey as thekey, tlist.tid as thingid, 
+SELECT 
+	@thekey as thekey, 
+	tlist.tid as thingid, 
 	@userid_listnameid as listkey, 
 	@thingName as thingname, 
 	tthing.name as listname,
 	@listnameid as lid,
-    `tlist`.`uuid`
+    `tlist`.`uuid` as mykey
 from tlist
 inner join tthing on tthing.id = @listnameid 
-where tlist.tid = @thingId and tlist.uid = @uid
+where tlist.id = @thekey
 limit 1
 
 ;
-End; -- Ends the proclabel.
+End; -- Ends good times.
 call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
@@ -1378,74 +1380,104 @@ limit 1;
 
 if @theaction LIKE 'ditto' then 
 
-	
+	SET @newUuid = UUID();
 
 	-- INSERT INTO TLIST
 	INSERT INTO tlist (`tid`, `lid`, `uid`, `state`, `added`, `modified`,`uuid`)
-		VALUES ( @thingid, @listid, @uid, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, UUID() )
+		VALUES ( @thingid, @listid, @uid, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, @newUuid )
 	on duplicate key update state = 1;
-	
-    -- Get the new key and uuid. 
-    select id, uuid 
-		into @theKey, @theUuid 
-	from tlist 
-    where tid = @thingId and lid = @listid and uid = @uid limit 1;
+    
+    /* Using this to change the uuid is a bit of a hack, but also adds security?  */
+    SELECT `id`,`uuid` into @myItemKey, @newUuid from tlist where `tid` = @thingid and `lid` = @listid and `uid` = @uid and `state` limit 1;
 
 	-- credit the ditto
-    update tlist set dittoCount = dittoCount + 1 where id = @tlistId limit 1;
-	
-	
-	-- log the ditto - Working. 
-		-- TODO2 - Handle what happens if a ditto is just returning something to its origional state.
-	/* Insert into tditto only if it isn't the person dittoing themself. */
-	if @uid != @sourceuserid then 
+    if @uid != @sourceuserid then
+		update tlist set dittoCount = dittoCount + 1 where id = @tlistId limit 1;
+		
+		-- log the ditto - Working. 
+			-- TODO2 - Handle what happens if a ditto is just returning something to its origional state.
+		/* Insert into tditto only if it isn't the person dittoing themself. */
+		
 		insert into tditto (`userid`, `sourceuserid`, `thingid`, `listid`, `added`, `read`, `itemDittoed`)
-		values ( @uid, @sourceUserId, @thingId, @listId, CURRENT_TIMESTAMP, 0, @tlistId);
-	end if;
-
-	-- Get the ditto key - FAILING
-	SET @dittokey = 15;
-
-	SET @dkq = CONCAT('
-	SET @dittokey = (
-		select id 
-		from tditto 
-		where 
-			userid = ',CAST(@uid as CHAR(10)),' and 
-			sourceuserid = ',CAST(@sourceUserId as CHAR(10)),' and 
-			thingid = ',CAST(@thingId as CHAR(10)),' and 
-			listid = ',CAST(@listId as CHAR(10)),' 
-		order by id desc
-		limit 1
-	);');
-
-	prepare stmt from @dkq;
-	execute stmt;
-	deallocate prepare stmt;
-
+		values ( @uid, @sourceUserId, @thingId, @listId, CURRENT_TIMESTAMP, 0, @tlistId)
+		on duplicate key update tditto.hidden = 0;
 	
-	-- call log('dittokey result',@dittokey);
+		-- Now, get THAT id for updating tlist. HACK - TODO2 - Make this faster.
+        select id into @newDittoKey from tditto 
+        where userid = @uid and itemDittoed = @tlistId limit 1;
+        
+        -- Update tlist with the proper item.
+        update tlist set dittokey = @newDittoKey where id = @myItemkey limit 1;
+        
 
-	-- Add it to the list table. - This is working.
-	update tlist set dittokey = @dittokey where id = @thekey limit 1;
+		-- Get the ditto key - FAILING
+		SET @dittokey = 15;
+		
+		/* THIS IS A NASTY HACK */
+		SET @dkq = CONCAT('
+		SET @dittokey = (
+			select id 
+			from tditto 
+			where 
+				userid = ',CAST(@uid as CHAR(10)),' and 
+				sourceuserid = ',CAST(@sourceUserId as CHAR(10)),' and 
+				thingid = ',CAST(@thingId as CHAR(10)),' and 
+				listid = ',CAST(@listId as CHAR(10)),' 
+			order by id desc
+			limit 1
+		);');
+		
+		-- select @dkq;
 
+		prepare stmt from @dkq;
+		execute stmt;
+		deallocate prepare stmt;
+    
+    
+		/* This isn't executing properly. With or without the preparation
+		SELECT id into @dittokey
+		from tditto
+		where userid = CAST(@uid as CHAR(10)) and
+			sourceuserid = CAST(@sourceUserId as CHAR(10)) and
+			thingid = CAST(@thingId as CHAR(10)) and
+			listid = CAST(@listId as CHAR(10))
+		order by id desc
+		limit 1;
+		*/
+
+		-- select @dittokey as SUCCESSFULDITTOKEY;
+		
+		-- call log('dittokey result',@dittokey);
+
+		-- Add the ditto key to the table for that item.
+		update tlist set dittokey = @dittokey 
+		where id = @thekey limit 1;
+	-- else
+		-- This user just dittoed themself, which means they just re-applied the same item.
+        
+
+	end if;
 	
 	-- Return the thingid and thingname and listname for the benefit of the Javascript coder.`
+    -- FINAL STEP IN INSERTING A DITTO
 	SET @theQ = CONCAT('
 	select 
-		l.id as thekey, 
-        l.tid, 
-        t.name as thingname, 
-        l.lid, 
-		ln.name as listname, 
+		',@myItemKey ,' as thekey, 
         count(*) as friendsWith, 
-        `l`.`uuid`
+        ',@thingId ,' as tid, 
+        
+        t.name as thingname, 
+        ',@listId,' as lid, 
+		ln.name as listname, 
+        
+        "',@newUuid,'" as uuid
+        
 	from tlist l
 	inner join tthing t on t.id = l.tid
 	inner join tthing ln on ln.id = l.lid
 	where l.tid = ', @thingId ,' and l.lid = ' , @listId ,' and l.uid in (',@friendArray,')
-	group by l.tid, l.lid');
-    -- select @theQ;
+	');
+    --     select @theQ;
 
 	prepare stmt from @theQ;
 	execute stmt;
@@ -4926,4 +4958,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-27  0:12:40
+-- Dump completed on 2015-01-27 22:49:50
