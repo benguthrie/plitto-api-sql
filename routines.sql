@@ -546,6 +546,30 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `dittoAttribute`(theAction INT(1), itemKey int(11))
+BEGIN
+
+SET @itemKey = itemKey;
+SET @theAction = theAction;
+
+
+
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `log`(title VARCHAR(255), log TEXT)
 BEGIN
 
@@ -909,7 +933,7 @@ SELECT
 	@thingName as thingname, 
 	tthing.name as listname,
 	@listnameid as lid,
-    `tlist`.`uuid` as mykey
+    `tlist`.`uuid` as ik
 from tlist
 inner join tthing on tthing.id = @listnameid 
 where tlist.id = @thekey
@@ -2034,11 +2058,12 @@ DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `v2.0_GetMore`(
 	thetoken VARCHAR(36),
 	
-	forUserIDs TEXT ,
-
-	thetype VARCHAR(20),
-	theId varchar(20), 
-	thenot TEXT
+	forUserIDs TEXT , -- Will come formatted.
+    listId INT(11), -- 0 if none - TODO3 - Later? 
+	incommonFilter VARCHAR(20), -- Filter: All / Dittoable / Shared
+	thenot TEXT, -- CSV of all the items already shown.
+    -- TODO3 - Page Num? pageH
+    reqLimit INT(3)
 )
 BEGIN
 
@@ -2048,17 +2073,17 @@ goodTimes:BEGIN
 	/* Begin Token Check Block */
 	SET @uid = '';
 	SET @tokenSuccess = false;
-    SET @friendArray = '';
+	SET @friendArray = '';
 	SET @errorMessage = '';
 	SET @logKey = null;
 	call `v2.0_checkToken`( 
 		'v2.0_GetMore',
 		@thetoken, 
-        CONCAT('call `v2.0_GetMore`("',thetoken,'","',forUserIDs,'","',thetype,'","',theId,'","',thenot,'")'),
-        @tokenSuccess, 
-        @uid, 
-        @friendArray, 
-        @errorMessage,
+		CONCAT('call `v2.0_GetMore`("',thetoken,'","',forUserIDs,'","',listId,'","',incommonFilter,'","',thenot,'")'),
+		@tokenSuccess, 
+		@uid, 
+		@friendArray, 
+		@errorMessage,
 		@logKey
 	);
     
@@ -2066,224 +2091,97 @@ goodTimes:BEGIN
 		LEAVE goodTimes;
 	end if;
     /* End Token Check Block */
-    
-    
 
+
+/* Admin Note, We can assume that we have a user, list, and items to exclude as of 1/29/2015.   
+Let's make the most of that assumption, and just pull back records that we don't have yet. */
+
+
+    
 -- Create variables for this session.
-SET @thetype = thetype;
-
+SET @incommonFilter = incommonFilter; -- TODO2 - Apply the incommonFilter below.
 SET @forUserIds = forUserIDs;
-
-SET @theId = theId; -- The user or list id.
-
-
--- Default to their friends if it is null 
-if char_length(@forUserIDs) > 0 then
-	SET @forUserIDs = forUserIDs; -- For the specific friend.
-else
-	-- Default to them, and their friends if it looks like that's a good idea.
-	SET @forUserIDs = CONCAT(@uid,',',@friendArray);
-end if;
-
-
-SET @thetype = thetype;
-
-SET @thenot = thenot;	-- Existing
+SET @listId = listId; -- The user or list id.
+SET @thenot = thenot;	-- Existing Items Already Shown
 
 if LENGTH(@thenot) =  0 then
 	SET @theNotWhere = '';
 else
-	SET @theNotWhere = CONCAT('and (a.uid, a.lid, a.tid) NOT IN (
+	SET @theNotWhere = CONCAT('and l.tid NOT IN (
 			',@thenot,'
-		)');
+		) ');
 end if;
 
-
-if @thetype like 'list' then
-	SET @listadendum = CONCAT(' and a.lid = ',@theId);
+-- Add the list filter.
+if LENGTH(@listId) > 0  and @listId not like  0 then
+	SET @listadendum = CONCAT(' and l.lid = ',@listId,' ');
 else
-	SET @listadendum = '';
+	SET @listadendum = ' ';
 end if;
 
---  Removed duid set @thefields = ' a.id, a.tid, a.lid, a.uid, a.added, a.modified, a.duid, a.state ';
-set @thefields = ' a.id, a.tid, a.lid, a.added, a.modified, a.state, a.dittokey, a.uuid ';
--- set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`uid`,`a`,`m`,`duid`,`state`,`myKey`)';
-set @insertTable = 'insert into temp_splists (`id`,`tid`,`lid`,`a`,`m`,`state`,`dittokey`, `uuid`, `uid`,`myKey`,`show`,`listid`,`grouporder`)';
-
-SET @defaultlimit = 25;
-
-drop table if exists `temp_splists`;
-
-CREATE table temp_splists (
-	`id` INT(11),
-	`tid` int(11),
-	`lid` int(11),
-	`uid` int(11),
-	`a` datetime,
-	`m` datetime,
-	-- Removed. This will move to notifications and dittos. `duid` int(11),
-	`state` tinyint(1),
-	`myKey` int(11),
-	`listid` VARCHAR(20),
-	`show` TINYINT(1),
-	`grouporder` tinyint(1),
-	`dittokey` INT(11),	-- This is where they got their link from
-    `uuid` VARCHAR(45)
+-- User or users? select LENGTH(REPLACE('5,6',',','')), LENGTH('5,6');
+	-- Is it an array?
+if LENGTH( REPLACE(@forUserIds,',','') ) < LENGTH( @forUserIds ) then
+	SET @userFields = ' l.uid, un.name as username, un.fbuid as fbuid, '; -- Defaults to the private user fields.
+	SET @whereUser = CONCAT(' and l.uid in (',@forUserIds,') ');
     
-	
-);
--- ',@listadendum,' 
-
--- Insert my items, if it's a list
-if @thetype like 'list' then
-	SET @myItems = CONCAT(
-		@insertTable, 
-		' select 
-			', @thefields,', 
-			a.uid , 
-            a.id, 1, 
-            CONCAT(a.uid,"_",a.lid) as listid, 
-            1 as grouporder
-		from tlist a 
-		
-		where a.uid =',@uid,' and a.state = 1 
-			',@listadendum,' 
-			',@theNotWhere,'
-		order by a.id desc
-		limit ',@defaultlimit);
-
-	-- select @myItems;
-
-		prepare stmt from @myItems;
-		execute stmt;
-		deallocate prepare stmt; 
+ELSEIF CAST(@forUserIds AS UNSIGNED) > 0 then
+	SET @userFields = ' l.uid, un.name as username, un.fbuid as fbuid, '; -- Defaults to the private user fields.
+	SET @whereUser = CONCAT(' and l.uid = ', CAST(@forUserIds AS UNSIGNED),' ');
+    
+else
+    
+    SET @userFields = ' 0 as uid, "Strangers" as username, "" as fbuid, ';
+	SET @whereUser = CONCAT(' and l.uid not in (',@uid,',',@friendArray,') ');
+    
 end if;
 
-
-	-- Insert Dittoable Content
-	SET @dittoable = CONCAT(
-		@insertTable, 
-		' select ', @thefields,', a.uid , b.id, 1 , CONCAT(a.uid,"_",a.lid) as listid, 1 as grouporder
-		from tlist a 
-		left outer join 
-			tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@uid,' 
-		where a.uid in (',@forUserIDs,') and a.state = 1 and b.state is null 
-			',@listadendum,' 
-			',@theNotWhere,'
-		order by a.id desc
-		limit ',@defaultlimit);
+set @defaultLimit = reqLimit;
 
 
-	-- Insert Shared Content
-	SET @shared = CONCAT(
-		@insertTable, 
-		' select ', @thefields,', a.uid , b.id, 1,CONCAT(a.uid,"_",a.lid) as listid, 2 as grouporder
-		from tlist a 
-		inner join 
-			tlist b on b.lid = a.lid and b.tid = a.tid and b.state = 1 and b.uid = ',@uid,'
-		where a.uid in (',@forUserIDs,') and a.state = 1 and b.state = 1  
-			',@listadendum,' 
-			',@theNotWhere,'
-		order by a.id desc
-		limit ',@defaultlimit);
+	-- Execute the query.    
+	SET @qDo = CONCAT(
+	'select 
+		l.id,
+		', @userFields ,'
+		l.lid, ln.name as listname, 
+		l.tid, tn.name as thingname,
+		l.added, 
+		l.state, 
+		l.dittokey, 
+		dk.sourceuserid as dittouser, 
+		du.name as dittousername, 
+		du.fbuid as dittofbuid,
+		ml.id as mykey,
+		tc.`comment` as commentText, 
+        tc.`read` as commentRead, 
+        tc.`active` as commentActive,
+		l.uuid, 
+		l.dittoCount, 
+		l.commentCount
+	from tlist l
+	inner join tthing ln on ln.id = l.lid 
+	inner join tthing tn on tn.id = l.tid 
+	inner join tuser un on un.id = l.uid
 
-	-- Insert Dittoable Content from Anonymous Sources.
-	SET @anonContent = CONCAT(
-		@insertTable, 
-		-- Hard code 0 as the anonymous user id.
-		' select ', @thefields,', 0 , a.id, 1,CONCAT("0_",a.lid) as listid, 3 as grouporder
-		from tlist a 
-		left outer join 
-			tlist b on b.lid = a.lid and b.tid = a.tid and b.uid = ',@uid,' and b.state =1 and b.id is null
-		where a.uid not in (',@uid,',',@forUserIDs,') and a.state = 1
-			',@listadendum,' 
-			',@theNotWhere,'
-		order by a.id desc
-		limit ',@defaultlimit);
+	left outer join tditto dk on dk.id = l.dittokey and dk.hidden = 0 
+	left outer join tuser du on du.id = dk.sourceuserid
+	left outer join tlist ml on ml.uid = ',@uid,' and ml.lid = l.lid and ml.tid = l.tid and ml.state = 1
+	left outer join tcomments tc on tc.itemid = l.id and tc.byuserid = ',@uid,'
+	where 
+	l.state = 1 ',
+	@whereUser, @listadendum, @theNotWhere, 
+	' and l.lid = ',@listId,
+	' order by l.id desc
+	limit ',@defaultLimit);
 
+	-- select @qDo;
 
-	prepare stmt from @dittoable;
-		execute stmt;
-		deallocate prepare stmt; 
+	prepare stmt from @qDo;
+	execute stmt;
+	deallocate prepare stmt;
 
-	prepare stmt from @shared;
-		execute stmt;
-		deallocate prepare stmt;
-
-	prepare stmt from @anonContent;
-		execute stmt;
-		deallocate prepare stmt;
-
-/* Result Set 1: List Contents */
--- SELECT * FROM temp_splists order by uid desc, lid asc, a desc;
-select b.id
-	-- Owning user.
-	, b.uid, u.name as username, u.fbuid as fbuid
-	, b.lid, ln.name as listname
-	, b.tid, tn.name as thingname 
-	, b.a as added, b.m as modified, b.state
-	
-	-- My key
-	, b.mykey
-	-- Where did they get this from? (before 0.07 - 0.125 sec)
-	, b.dittokey , dt.sourceuserid as dittouser , du.fbuid as dittofbuid, du.name as dittousername
-	, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
-	-- Integrate the source of a ditto user.
--- , c.id as duid , c.name as dname, c.fbuid as dfbuid
-from (
-	select * , CONCAT(uid,'_',lid) as listkey 
-	from (
-	select t.id, t.tid, t.lid, t.uid, t.a, t.m, t.state, t.myKey , t.dittokey, t.uuid
-		-- , a.name as thingname, b.name as username, c.name as listname
-		-- , b.fbuid
-		, `show`, listid , 1 as customOrder
-	from temp_splists t
-	-- inner join tthing a on t.tid = a.id
-	-- inner join tthing c on t.lid = c.id
-	-- inner join tuser b on b.id = t.uid
-	where uid != @uid
-
-
-	UNION
-	select t.id, t.tid, t.lid, t.uid, t.a, t.m, t.state, t.myKey , t.dittokey, t.uuid
-		-- , a.name as thingname, b.name as username, c.name as listname
-		-- , b.fbuid
-		, `show`, listid , 2 as customOrder
-	from temp_splists t
-	-- inner join tthing a on t.tid = a.id
-	-- inner join tthing c on t.lid = c.id
-	-- inner join tuser b on b.id = t.uid
-	where uid = @uid)
-	as x order by customOrder desc, listid desc) b
--- Bring in this user's information? For their facebook id, I guess.
-inner join tuser u on b.uid = u.id
--- bring in the thing and list names
-inner join tthing tn on tn.id = b.tid
-inner join tthing ln on ln.id = b.lid
-
--- Bring in the dittos
-left outer join tditto dt on dt.id = b.dittokey and b.dittokey >0
--- Bring in the user information from the dittos.
-left outer join tuser du on du.id = dt.sourceuserid
-left outer join tcomments tc on tc.itemid = t.id and tc.byuserid = @uid
-
-	;
-    
-    /*
-, tc.`comment` as commentText, tc.`read` as commentRead, tc.`active` as commentActive 
-
-FROM showsometemp s
-
-INNER JOIN tthing tn ON tn.id = s.tid
-INNER JOIN tuser un ON un.id = s.uid
-INNER JOIN tthing lna ON lna.id = s.lid
-LEFT OUTER JOIN tlist dk ON dk.id = s.dittokey 
-LEFT OUTER JOIN tuser du ON du.id = dk.uid
-left outer join tcomments tc on tc.itemid = s.id and tc.byuserid = @uid
-*/
-
-
-END;
+end;
 call `spSqlLog_Timing` (@logKey );
 END ;;
 DELIMITER ;
@@ -4958,4 +4856,4 @@ DELIMITER ;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-27 22:49:50
+-- Dump completed on 2015-01-30  0:05:43
